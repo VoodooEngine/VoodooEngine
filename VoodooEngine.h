@@ -53,8 +53,7 @@ public:
 };
 // Check if input is being pressed/released, returns a bool and is false if no input is found
 extern "C" VOODOOENGINE_API bool InputPressed(std::map<int, bool> StoredInputs, int InputToCheck);
-extern "C" VOODOOENGINE_API void BroadcastInput(std::vector<InputCallback*> StoredCallbacks, 
-	int Input, bool Pressed);
+extern "C" VOODOOENGINE_API void BroadcastInput(std::vector<InputCallback*> StoredCallbacks, int Input, bool Pressed);
 //-------------------------------------------
 
 // Utility
