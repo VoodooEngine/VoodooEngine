@@ -141,7 +141,7 @@ ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* RenderTarget, HWND H
 	Result = Factory->CreateHwndRenderTarget(
 		D2D1::RenderTargetProperties(),
 		D2D1::HwndRenderTargetProperties(
-			HWind, D2D1::SizeU(WinRect.right, WinRect.bottom)),
+		HWind, D2D1::SizeU(WinRect.right, WinRect.bottom)),
 		&RenderTarget);
 
 	return RenderTarget;
@@ -325,30 +325,30 @@ void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 	}
 }
 
-SVector GetObjectLocation(Object* ObjectToSearch)
+SVector GetObjectLocation(Object* Object)
 {
-	return ObjectToSearch->Location;
+	return Object->Location;
 }
 
-void SetObjectLocation(Object* ObjectToUpdate, SVector NewLocation)
+void SetObjectLocation(Object* Object, SVector NewLocation)
 {
-	ObjectToUpdate->Location = NewLocation;
+	Object->Location = NewLocation;
 }
 
 void SetComponentRelativeLocation(
-	Object* ComponentOwner, TransformComponent* ComponentToUpdate, SVector NewLocation)
+	Object* ComponentOwner, TransformComponent* Component, SVector NewLocation)
 {
-	ComponentToUpdate->ComponentLocation = 
+	Component->ComponentLocation = 
 		{ComponentOwner->Location.X + NewLocation.X,
 		ComponentOwner->Location.Y + NewLocation.Y};
 }
 
 SVector GetComponentRelativeLocation(
-	Object* ComponentOwner, TransformComponent* ComponentToSearch)
+	Object* ComponentOwner, TransformComponent* Component)
 {
 	SVector CurrentComponentLocation =
-		{ComponentOwner->Location.X + ComponentToSearch->ComponentLocation.X,
-		ComponentOwner->Location.Y + ComponentToSearch->ComponentLocation.Y};
+		{ComponentOwner->Location.X + Component->ComponentLocation.X,
+		ComponentOwner->Location.Y + Component->ComponentLocation.Y};
 
 	return CurrentComponentLocation;
 }

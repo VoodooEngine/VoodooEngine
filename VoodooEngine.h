@@ -157,17 +157,17 @@ class Object
 public:
 	SVector Location = {0,0};
 };
-extern "C" VOODOOENGINE_API SVector GetObjectLocation(Object* ObjectToSearch);
-extern "C" VOODOOENGINE_API void SetObjectLocation(Object* ObjectToUpdate, SVector NewLocation);
+extern "C" VOODOOENGINE_API SVector GetObjectLocation(Object* Object);
+extern "C" VOODOOENGINE_API void SetObjectLocation(Object* Object, SVector NewLocation);
 extern "C" VOODOOENGINE_API void SetComponentRelativeLocation(
-	Object* ComponentOwner, TransformComponent* ComponentToUpdate, SVector NewLocation);
+	Object* ComponentOwner, TransformComponent* Component, SVector NewLocation);
 extern "C" VOODOOENGINE_API SVector GetComponentRelativeLocation(
-	Object* ComponentOwner, TransformComponent* ComponentToSearch);
+	Object* ComponentOwner, TransformComponent* Component);
 //-------------------------------------------
 
 // Voodoo engine class
 //-------------------------------------------
-class VoodooEngine : public InputCallback
+class VoodooEngine
 {
 public:
 	bool EngineRunning = false;
