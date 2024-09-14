@@ -1,0 +1,10 @@
+Voodoo Engine Installation Guide For Visual Studio
+
+1. Download Voodoo Engine repository from GitHub
+2. Open "VoodooEngine.sln" in visual studio
+3. Build the solution, you should now have a "VoodooEngine.dll" and "VoodooEngine.lib" located in the build folder
+4. Create a new visual studio project
+5. Link the path to where "VoodooEngine.h" and "VoodooEngine.lib" is to your new visual studio project
+5. Copy the "VoodooEngine.dll" into the same folder as your new visual studio project
+6. #include "VoodooEngine.h" in your new visual studio project and compile and run 
+7. If it runs without errors then VoodooEngine is successfully installed! 
