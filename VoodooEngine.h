@@ -1,6 +1,6 @@
 #pragma once
 
-// STL
+// STL library
 #include <map>
 #include <string>
 #include <vector>
@@ -33,8 +33,8 @@ struct SWindowParams
 	int ScreenResolutionHeight;
 	int Fullscreen;
 };
-// Setup window class for preparing for window creation
-extern "C" VOODOOENGINE_API void SetupWindowParams(WNDCLASSEX &WindowClass, 
+// Setup app window parameters preparing for window creation
+extern "C" VOODOOENGINE_API void SetupAppWindowParams(WNDCLASSEX &WindowClass, 
 	WNDPROC InputCallbackFunction);
 // Create window and return window handle
 extern "C" VOODOOENGINE_API void CreateAppWindow(SWindowParams &WindowParams);
@@ -46,13 +46,16 @@ extern "C" VOODOOENGINE_API void UpdateAppWindow();
 
 // Input
 //-------------------------------------------
+// Any class that inherits "InputCallback" class 
+// will be able to recieve a broadcast of which input was pressed/released
 class InputCallback
 {
 public:
 	virtual void BroadcastInput(int Input, bool Pressed){};
 };
-// Check if input is being pressed/released, returns a bool and is false if no input is found
+// Check if input is being pressed/released, returns a bool and is false as default if no input is found
 extern "C" VOODOOENGINE_API bool InputPressed(std::map<int, bool> StoredInputs, int InputToCheck);
+// Sends input broadcast to all inherited "InputCallback" classes whenever an input is pressed 
 extern "C" VOODOOENGINE_API void BroadcastInput(std::vector<InputCallback*> StoredCallbacks, int Input, bool Pressed);
 //-------------------------------------------
 
@@ -74,6 +77,7 @@ struct SColor
 //-------------------------------------------
 
 // Base component that all movable components inherit
+// This tracks the component location relative to its owner (the object it´s attached to)
 //-------------------------------------------
 class TransformComponent
 {
@@ -94,7 +98,7 @@ struct SBitmap
 	SVector BitmapOffsetRight = {0,0};
 	SVector BitmapSource = {0,0};
 };
-// Bitmap component class
+// Bitmap component
 class BitmapComponent : public TransformComponent
 {
 public:
@@ -106,6 +110,41 @@ extern "C" VOODOOENGINE_API ID2D1Bitmap* CreateNewBitmap(
 	ID2D1HwndRenderTarget* RenderTarget, const wchar_t* FileName, bool Flip = false);
 // Setup bitmap struct
 extern "C" VOODOOENGINE_API SBitmap SetupBitmapParams(ID2D1Bitmap* CreatedBitmap);
+//-------------------------------------------
+
+// Animation
+//-------------------------------------------
+// Contains frame size/total frames and animation speed/state info, 
+// used in conjunction with animation component
+struct AnimationParameters
+{
+	int AnimationState = 1;
+	float AnimationSpeed = 1.0f;
+	int TotalFrames = 1;
+	int FrameWidth = 0;
+	int FrameHeight = 0;
+	int CurrentFrame = 1;
+	float AnimationTimer = 0;
+};
+// Animation component class
+class AnimationComponent
+{
+public:
+	AnimationParameters AnimationParams = {};
+};
+// Get animation statess
+extern "C" VOODOOENGINE_API void UpdateAnimationState(
+	AnimationParameters &AnimationParams,
+	SVector &BitmapSource,
+	SVector &BitmapOffsetLeft,
+	SVector &BitmapOffsetRight);
+// Update animation
+extern "C" VOODOOENGINE_API void UpdateAnimation(
+	AnimationParameters &AnimationParams,
+	SVector &BitmapSource,
+	SVector &BitmapOffsetLeft,
+	SVector &BitmapOffsetRight,
+	float DeltaTime);
 //-------------------------------------------
 
 // Collision detection
@@ -130,9 +169,9 @@ public:
 //-------------------------------------------
 extern "C" VOODOOENGINE_API ID2D1HwndRenderTarget* SetupRenderer(
 	ID2D1HwndRenderTarget* RenderTarget, HWND WindowHandle);
-extern "C" VOODOOENGINE_API void RenderByLayer(
+extern "C" VOODOOENGINE_API void RenderBitmapByLayer(
 	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> StoredBitmaps, int RenderLayer);
-extern "C" VOODOOENGINE_API void Render(
+extern "C" VOODOOENGINE_API void RenderBitmap(
 	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> BitmapsToRender, 
 	int MaxNumRenderLayers);
 extern "C" VOODOOENGINE_API void RenderCollisionRectangles(
@@ -165,7 +204,7 @@ extern "C" VOODOOENGINE_API SVector GetComponentRelativeLocation(
 	Object* ComponentOwner, TransformComponent* Component);
 //-------------------------------------------
 
-// Voodoo engine class
+// Voodoo engine
 //-------------------------------------------
 class VoodooEngine
 {
@@ -187,6 +226,7 @@ public:
 	std::map<int, bool> StoredInputs;
 	std::vector<InputCallback*> StoredInputCallbacks;
 };
+extern "C" VOODOOENGINE_API void Quit(VoodooEngine* Engine);
 //-------------------------------------------
 
 // Update function that calls update to all connected update components
