@@ -1,5 +1,8 @@
 #include "pch.h"
 #include "VoodooEngine.h"
+#include <fstream>
+#include <sstream>
+#include <string>
 
 void SetupAppWindowParams(WNDCLASSEX &WindowClass, WNDPROC InputCallbackFunction)
 {
@@ -122,10 +125,37 @@ float UpdateFrameRate(VoodooEngine* Engine)
 	return SecondsPerFrame;
 }
 
-void Quit(VoodooEngine* Engine)
+void CloseApp(VoodooEngine* Engine)
 {
 	Engine->EngineRunning = false;
+	Engine->StoredBitmaps.clear();
+	Engine->StoredCollisionComponents.clear();
+	Engine->StoredUpdateComponents.clear();
+	Engine->StoredInputCallbacks.clear();
+	Engine->StoredInputs.clear();
+	Engine->StoredObjects.clear();
+	delete Engine->Mouse.MouseCollider;
 	delete Engine;
+}
+
+void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize)
+{
+	Engine->Mouse.MouseCollider->CollisionRect = ColliderSize;
+}
+
+void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation)
+{
+	if (!Engine)
+		return;
+
+	if (Engine->EngineRunning)
+	{
+		Engine->Mouse.Location = NewLocation;
+		Engine->Mouse.MouseBitmap->ComponentLocation = NewLocation;
+		Engine->Mouse.MouseCollider->ComponentLocation = Engine->Mouse.MouseBitmap->ComponentLocation;
+			//{NewLocation.X + Engine->Mouse.MouseCollider->CollisionRectOffset.X,
+			//NewLocation.Y + Engine->Mouse.MouseCollider->CollisionRectOffset.Y};
+	}
 }
 
 void Update(VoodooEngine* Engine, float DeltaTime)
@@ -176,6 +206,10 @@ ID2D1Bitmap* CreateNewBitmap(ID2D1HwndRenderTarget* RenderTarget,
 		GENERIC_READ,
 		WICDecodeMetadataCacheOnDemand,
 		&Decoder);
+
+	// Failed to find file 
+	if (!Decoder)
+		return nullptr;
 
 	// Create decoder frame
 	IWICBitmapFrameDecode* DecoderFrame = nullptr;
@@ -344,7 +378,8 @@ void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer,
 void RenderBitmap(ID2D1HwndRenderTarget* Renderer,
 	std::vector<BitmapComponent*> BitmapsToRender, int MaxNumRenderLayers)
 {
-	for (int i = 0; i < MaxNumRenderLayers; i++)
+	// "+1" is there to account for the last render layer 
+	for (int i = 0; i < (MaxNumRenderLayers + 1); i++)
 	{
 		RenderBitmapByLayer(Renderer, BitmapsToRender, i);
 	}
@@ -360,7 +395,7 @@ void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 			continue;
 
 		const D2D1_COLOR_F Color = 
-			{CollisionRectsToRender[i]->CollisionRectColor.R, 
+			{CollisionRectsToRender[i]->CollisionRectColor.R,
 			CollisionRectsToRender[i]->CollisionRectColor.G,
 			CollisionRectsToRender[i]->CollisionRectColor.B, 255};
 
@@ -369,7 +404,7 @@ void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 		
 		Renderer->DrawRectangle(
 			D2D1::RectF(
-			CollisionRectsToRender[i]->ComponentLocation.X, 
+			CollisionRectsToRender[i]->ComponentLocation.X,
 			CollisionRectsToRender[i]->ComponentLocation.Y,
 			CollisionRectsToRender[i]->ComponentLocation.X +
 			CollisionRectsToRender[i]->CollisionRect.X,
@@ -407,4 +442,52 @@ SVector GetComponentRelativeLocation(
 		ComponentOwner->Location.Y + Component->ComponentLocation.Y};
 
 	return CurrentComponentLocation;
+}
+
+bool UpdateDebugMode()
+{
+	bool NewDebugMode = false;
+	std::fstream File("EngineConfig.txt");
+	std::string String;
+	if (File.is_open())
+	{
+		while (getline(File, String))
+		{
+			if (String == "DebugModeTrue")
+			{
+				NewDebugMode = true;
+			}
+			else if (String == "DebugModeFalse")
+			{
+				NewDebugMode = false;
+			}
+		}
+	}
+	File.close();
+
+	return NewDebugMode;
+}
+
+bool UpdateEditorMode()
+{
+	bool NewEditorMode = false;
+	std::fstream File("EngineConfig.txt");
+	std::string String;
+	if (File.is_open())
+	{
+		while (getline(File, String))
+		{
+			if (String == "EditorModeTrue")
+			{
+				NewEditorMode = true;
+			}
+			else if (String == "EditorModeFalse")
+			{
+				NewEditorMode = false;
+			}
+		}
+	}
+	File.close();
+
+	return NewEditorMode;
 }

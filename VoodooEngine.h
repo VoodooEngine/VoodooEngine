@@ -70,9 +70,9 @@ struct SVector
 // Color (RGB)
 struct SColor
 {
-	int R = 0;
-	int G = 0;
-	int B = 0;
+	int R = 255;
+	int G = 255;
+	int B = 255;
 };
 //-------------------------------------------
 
@@ -156,7 +156,7 @@ public:
 	bool NoCollision = false;
 	int CollisionTag = 0;
 	std::vector<int> CollisionTagsToIgnore;
-	SColor CollisionRectColor = {0,0,0};
+	SColor CollisionRectColor = {255,255,255};
 	SVector CollisionRect = {0,0};
 	SVector CollisionRectOffset = {0,0};
 
@@ -165,7 +165,7 @@ public:
 };
 //-------------------------------------------
 
-// Renderer
+// Rendering
 //-------------------------------------------
 extern "C" VOODOOENGINE_API ID2D1HwndRenderTarget* SetupRenderer(
 	ID2D1HwndRenderTarget* RenderTarget, HWND WindowHandle);
@@ -178,7 +178,7 @@ extern "C" VOODOOENGINE_API void RenderCollisionRectangles(
 	ID2D1HwndRenderTarget* Renderer, std::vector<CollisionComponent*> CollisionRectsToRender);
 //-------------------------------------------
 
-// Update component
+// Update component inherited in all objects that needs to update each frame
 //-------------------------------------------
 class UpdateComponent
 {
@@ -189,7 +189,7 @@ public:
 
 // Object
 //-------------------------------------------
-// Base object class inherited by all objects in the game
+// Base object class inherited by all objects in the engine that needs tranformation
 //-------------------------------------------
 class Object
 {
@@ -204,11 +204,26 @@ extern "C" VOODOOENGINE_API SVector GetComponentRelativeLocation(
 	Object* ComponentOwner, TransformComponent* Component);
 //-------------------------------------------
 
+// Mouse
+//-------------------------------------------
+class VoodooMouse : public Object
+{
+public:
+	BitmapComponent* MouseBitmap = nullptr;
+	CollisionComponent* MouseCollider = nullptr;
+	bool PrimaryMousePressed = false;
+	bool SecondaryMousePressed = false;
+};
+//-------------------------------------------
+
 // Voodoo engine
 //-------------------------------------------
 class VoodooEngine
 {
 public:
+	VoodooMouse Mouse;
+	bool DebugMode = false;
+	bool EditorMode = false;
 	bool EngineRunning = false;
 	SWindowParams Window;
 	ID2D1HwndRenderTarget* Renderer = nullptr;
@@ -226,7 +241,9 @@ public:
 	std::map<int, bool> StoredInputs;
 	std::vector<InputCallback*> StoredInputCallbacks;
 };
-extern "C" VOODOOENGINE_API void Quit(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize);
+extern "C" VOODOOENGINE_API void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation);
+extern "C" VOODOOENGINE_API void CloseApp(VoodooEngine* Engine);
 //-------------------------------------------
 
 // Update function that calls update to all connected update components
@@ -240,4 +257,13 @@ extern "C" VOODOOENGINE_API float GetSecondsPerFrame(
 	LARGE_INTEGER* StartCounter, LARGE_INTEGER* EndCounter, LARGE_INTEGER* Frequency);
 extern "C" VOODOOENGINE_API float SetNewFPSLimit(float NewFPSLimit);
 extern "C" VOODOOENGINE_API float UpdateFrameRate(VoodooEngine* Engine);
+//-------------------------------------------
+
+// File I/O
+//-------------------------------------------
+// Read only
+extern "C" VOODOOENGINE_API bool UpdateDebugMode();
+extern "C" VOODOOENGINE_API bool UpdateEditorMode();
+// Read/Write
+// Add functions here
 //-------------------------------------------
