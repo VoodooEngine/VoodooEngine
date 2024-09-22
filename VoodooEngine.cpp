@@ -125,17 +125,80 @@ float UpdateFrameRate(VoodooEngine* Engine)
 	return SecondsPerFrame;
 }
 
+void DeleteBitmapComponent(VoodooEngine* Engine, BitmapComponent* Component)
+{
+	Engine->StoredBitmapComponents.erase(std::remove(
+		Engine->StoredBitmapComponents.begin(),
+		Engine->StoredBitmapComponents.end(), Component));
+}
+
+void DeleteCollisionComponent(VoodooEngine* Engine, CollisionComponent* Component)
+{
+	Engine->StoredCollisionComponents.erase(std::remove(
+		Engine->StoredCollisionComponents.begin(),
+		Engine->StoredCollisionComponents.end(), Component));
+}
+
 void CloseApp(VoodooEngine* Engine)
 {
 	Engine->EngineRunning = false;
-	Engine->StoredBitmaps.clear();
+	Engine->StoredBitmapComponents.clear();
 	Engine->StoredCollisionComponents.clear();
 	Engine->StoredUpdateComponents.clear();
 	Engine->StoredInputCallbacks.clear();
 	Engine->StoredInputs.clear();
 	Engine->StoredObjects.clear();
-	delete Engine->Mouse.MouseCollider;
 	delete Engine;
+}
+
+void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize, int MouseRenderLayer)
+{
+	// Add mouse collider used for detecting mouse "hover" (is invisible as default)
+	Engine->Mouse.MouseCollider = new CollisionComponent();
+	SetMouseColliderSize(Engine, MouseColliderSize);
+	Engine->StoredCollisionComponents.push_back(Engine->Mouse.MouseCollider);
+
+	// Set custom mouse cursor if found, otherwise render mouse collider instead
+	Engine->Mouse.MouseBitmap = new BitmapComponent();
+	Engine->Mouse.MouseBitmap->Bitmap = CreateNewBitmap(Engine->Renderer, L"CustomMouseCursor.png");
+	
+	if (Engine->Mouse.MouseBitmap->Bitmap)
+	{
+		Engine->Mouse.MouseBitmap->BitmapParams = SetupBitmapParams(Engine->Mouse.MouseBitmap->Bitmap);
+		Engine->StoredBitmapComponents.push_back(Engine->Mouse.MouseBitmap);
+
+		// Render mouse cursor on top of everything else (highest render layer)
+		Engine->Mouse.MouseBitmap->BitmapParams.RenderLayer = MouseRenderLayer;
+
+		if (Engine->DebugMode)
+			Engine->Mouse.MouseCollider->RenderCollisionRect = true;
+	}
+	else
+	{
+		// Auto render collision rect if no mouse cursor bitmap is found 
+		// (so you still can see a visual representation of where the mouse is)
+		Engine->Mouse.MouseCollider->RenderCollisionRect = true;
+
+		// Free up memory since custom mouse cursor file was not found 
+		delete Engine->Mouse.MouseBitmap;
+	}
+}
+
+void DeleteMouse(VoodooEngine* Engine)
+{
+	if (Engine->Mouse.MouseBitmap)
+	{
+		DeleteBitmapComponent(Engine, Engine->Mouse.MouseBitmap);
+		delete Engine->Mouse.MouseBitmap;
+		Engine->Mouse.MouseBitmap = nullptr;
+	}
+
+	if (Engine->Mouse.MouseCollider)
+	{
+		DeleteCollisionComponent(Engine, Engine->Mouse.MouseCollider);
+		delete Engine->Mouse.MouseCollider;
+		Engine->Mouse.MouseCollider = nullptr;
+	}
 }
 
 void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize)
@@ -145,16 +208,48 @@ void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize)
 
 void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation)
 {
-	if (!Engine)
+	if (!Engine || !Engine->EngineRunning)
 		return;
 
-	if (Engine->EngineRunning)
-	{
-		Engine->Mouse.Location = NewLocation;
+	Engine->Mouse.Location = NewLocation;
+
+	if (Engine->Mouse.MouseBitmap)
 		Engine->Mouse.MouseBitmap->ComponentLocation = NewLocation;
-		Engine->Mouse.MouseCollider->ComponentLocation = Engine->Mouse.MouseBitmap->ComponentLocation;
-			//{NewLocation.X + Engine->Mouse.MouseCollider->CollisionRectOffset.X,
-			//NewLocation.Y + Engine->Mouse.MouseCollider->CollisionRectOffset.Y};
+
+	if (Engine->Mouse.MouseCollider &&
+		Engine->Mouse.MouseBitmap)
+	{
+		Engine->Mouse.MouseCollider->ComponentLocation =
+		{Engine->Mouse.MouseBitmap->ComponentLocation.X + Engine->Mouse.MouseCollider->CollisionRectOffset.X,
+		Engine->Mouse.MouseBitmap->ComponentLocation.Y + Engine->Mouse.MouseCollider->CollisionRectOffset.Y};
+	}
+}
+
+void UpdateCustomMouseCursor(VoodooEngine* Engine)
+{
+	if (GetMessagePos())
+	{
+		POINT MousePosition;
+		if (GetCursorPos(&MousePosition))
+		{
+			SVector NewMousePos = { 0,0 };
+			NewMousePos.X = MousePosition.x;
+			NewMousePos.Y = MousePosition.y;
+
+			if (Engine)
+				UpdateMouseLocation(Engine, NewMousePos);
+		}
+	}
+}
+
+bool HideSystemMouseCursor(UINT Message, LPARAM LParam)
+{
+	// Hides system mouse cursor since engine is using custom icon for cursor
+	if (Message == WM_SETCURSOR &&
+		LOWORD(LParam) == HTCLIENT)
+	{
+		SetCursor(NULL);
+		return TRUE;
 	}
 }
 
@@ -342,7 +437,7 @@ void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer,
 		if (!StoredBitmaps[i]->Bitmap)
 			continue;
 
-		// Don't render bitmap if set to be hidden in game
+		// Go to next bitmap if set to be hidden in game
 		if (StoredBitmaps[i]->BitmapParams.HiddenInGame)
 			continue;
 
@@ -385,6 +480,92 @@ void RenderBitmap(ID2D1HwndRenderTarget* Renderer,
 	}
 }
 
+bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
+{
+	if (Sender->ComponentLocation.X < Target->ComponentLocation.X + Target->CollisionRect.X &&
+		Target->ComponentLocation.X < Sender->ComponentLocation.X + Sender->CollisionRect.X &&
+		Sender->ComponentLocation.Y < Target->ComponentLocation.Y + Target->CollisionRect.Y &&
+		Target->ComponentLocation.Y < Sender->ComponentLocation.Y + Sender->CollisionRect.Y)
+	{
+		return true;
+	}
+
+	return false;
+}
+
+void CheckForCollision(Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target)
+{
+	if (!Target)
+		return;
+
+	if (Target->NoCollision)
+		return;
+
+	bool Ignore = false;
+	if (IsCollisionDetected(Sender, Target))
+	{
+		for (int i = 0; i < Sender->CollisionTagsToIgnore.size(); i++)
+		{
+			if (Target->CollisionTag == Sender->CollisionTagsToIgnore[i])
+			{
+				Ignore = true;
+				break;
+			}
+		}
+
+		if (!Ignore && 
+			!Sender->IsOverlapped)
+		{
+			Sender->IsOverlapped = true;
+			CallbackOwner->OnBeginOverlap(Sender->CollisionTag, Target->CollisionTag);
+		}
+	}
+	else if (!Ignore && 
+		Sender->IsOverlapped)
+	{
+		Sender->IsOverlapped = false;
+		CallbackOwner->OnEndOverlap(Sender->CollisionTag, Target->CollisionTag);
+	}
+}
+
+void CheckForCollisionMultiple(Object* CallbackOwner, CollisionComponent* Sender, std::vector<CollisionComponent*> Targets)
+{
+	for (int i = 0; i < Targets.size(); i++)
+	{
+		if (!Targets[i])
+			return;
+
+		if (Targets[i]->NoCollision)
+			continue;
+
+		bool Ignore = false;
+		if (IsCollisionDetected(Sender, Targets[i]))
+		{
+			for (int j = 0; j < Sender->CollisionTagsToIgnore.size(); j++)
+			{
+				if (Targets[i]->CollisionTag == Sender->CollisionTagsToIgnore[j])
+				{
+					Ignore = true;
+					break;
+				}
+			}
+
+			if (!Ignore &&
+				!Sender->IsOverlapped)
+			{
+				Sender->IsOverlapped = true;
+				CallbackOwner->OnBeginOverlap(Sender->CollisionTag, Targets[i]->CollisionTag);
+			}
+		}
+		else if (!Ignore &&
+			Sender->IsOverlapped)
+		{
+			Sender->IsOverlapped = false;
+			CallbackOwner->OnEndOverlap(Sender->CollisionTag, Targets[i]->CollisionTag);
+		}
+	}
+}
+
 void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 	std::vector<CollisionComponent*> CollisionRectsToRender)
 {
@@ -392,6 +573,10 @@ void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 	{
 		// Go to next if collision is set to none
 		if (CollisionRectsToRender[i]->NoCollision)
+			continue;
+
+		// Go to next if set to not render collision rect
+		if (!CollisionRectsToRender[i]->RenderCollisionRect)
 			continue;
 
 		const D2D1_COLOR_F Color = 

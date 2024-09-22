@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <iostream>
 
 // Win32 API
 #include <Windows.h>
@@ -147,6 +148,27 @@ extern "C" VOODOOENGINE_API void UpdateAnimation(
 	float DeltaTime);
 //-------------------------------------------
 
+// Object
+//-------------------------------------------
+// Base object class inherited by all objects in the engine that will be transformed 
+// and/or needs collision overlap events
+//-------------------------------------------
+class Object
+{
+public:
+	SVector Location = {0,0};
+
+	virtual void OnBeginOverlap(int SenderCollisionTag, int TargetCollisionTag){};
+	virtual void OnEndOverlap(int SenderCollisionTag, int TargetCollisionTag){};
+};
+extern "C" VOODOOENGINE_API SVector GetObjectLocation(Object* Object);
+extern "C" VOODOOENGINE_API void SetObjectLocation(Object* Object, SVector NewLocation);
+extern "C" VOODOOENGINE_API void SetComponentRelativeLocation(
+	Object* ComponentOwner, TransformComponent* Component, SVector NewLocation);
+extern "C" VOODOOENGINE_API SVector GetComponentRelativeLocation(
+	Object* ComponentOwner, TransformComponent* Component);
+//-------------------------------------------
+
 // Collision detection
 //-------------------------------------------
 // Collision component class
@@ -154,15 +176,20 @@ class CollisionComponent : public TransformComponent
 {
 public:
 	bool NoCollision = false;
+	bool IsOverlapped = false;
+	bool RenderCollisionRect = false;
 	int CollisionTag = 0;
 	std::vector<int> CollisionTagsToIgnore;
 	SColor CollisionRectColor = {255,255,255};
 	SVector CollisionRect = {0,0};
 	SVector CollisionRectOffset = {0,0};
-
-	virtual void OnBeginOverlap(){};
-	virtual void OnEndOverlap(){};
 };
+extern "C" VOODOOENGINE_API bool IsCollisionDetected(
+	CollisionComponent* Sender, CollisionComponent* Target);
+extern "C" VOODOOENGINE_API void CheckForCollision(
+	Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target);
+extern "C" VOODOOENGINE_API void CheckForCollisionMultiple(
+	Object* CallbackOwner, CollisionComponent* Sender, std::vector<CollisionComponent*> Targets);
 //-------------------------------------------
 
 // Rendering
@@ -187,21 +214,15 @@ public:
 };
 //-------------------------------------------
 
-// Object
+// Button
 //-------------------------------------------
-// Base object class inherited by all objects in the engine that needs tranformation
-//-------------------------------------------
-class Object
+class Button
 {
 public:
-	SVector Location = {0,0};
+	CollisionComponent* ButtonCollider = nullptr;
+	BitmapComponent* ButtonBitmap = nullptr;
+	int ButtonID = 0;
 };
-extern "C" VOODOOENGINE_API SVector GetObjectLocation(Object* Object);
-extern "C" VOODOOENGINE_API void SetObjectLocation(Object* Object, SVector NewLocation);
-extern "C" VOODOOENGINE_API void SetComponentRelativeLocation(
-	Object* ComponentOwner, TransformComponent* Component, SVector NewLocation);
-extern "C" VOODOOENGINE_API SVector GetComponentRelativeLocation(
-	Object* ComponentOwner, TransformComponent* Component);
 //-------------------------------------------
 
 // Mouse
@@ -237,12 +258,23 @@ public:
 	std::vector<Object*> StoredObjects;
 	std::vector<UpdateComponent*> StoredUpdateComponents;
 	std::vector<CollisionComponent*> StoredCollisionComponents;
-	std::vector<BitmapComponent*> StoredBitmaps;
+	std::vector<BitmapComponent*> StoredBitmapComponents;
 	std::map<int, bool> StoredInputs;
 	std::vector<InputCallback*> StoredInputCallbacks;
 };
+extern "C" VOODOOENGINE_API void CreateMouse(VoodooEngine* Engine, 
+	SVector MouseColliderSize, int MouseRenderLayer);
+extern "C" VOODOOENGINE_API void DeleteMouse(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize);
 extern "C" VOODOOENGINE_API void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation);
+extern "C" VOODOOENGINE_API void UpdateCustomMouseCursor(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API bool HideSystemMouseCursor(UINT Message, LPARAM LParam);
+//-------------------------------------------
+
+// Create/Delete
+//-------------------------------------------
+extern "C" VOODOOENGINE_API void DeleteBitmapComponent(VoodooEngine* Engine, BitmapComponent* Component);
+extern "C" VOODOOENGINE_API void DeleteCollisionComponent(VoodooEngine* Engine, CollisionComponent* Component);
 extern "C" VOODOOENGINE_API void CloseApp(VoodooEngine* Engine);
 //-------------------------------------------
 
@@ -264,6 +296,6 @@ extern "C" VOODOOENGINE_API float UpdateFrameRate(VoodooEngine* Engine);
 // Read only
 extern "C" VOODOOENGINE_API bool UpdateDebugMode();
 extern "C" VOODOOENGINE_API bool UpdateEditorMode();
-// Read/Write
+// Read/Write (saving)
 // Add functions here
 //-------------------------------------------
