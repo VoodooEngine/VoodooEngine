@@ -90,9 +90,9 @@ float GetSecondsPerFrame(
 	return ((float)(EndCounter->QuadPart - StartCounter->QuadPart) / (float)Frequency->QuadPart);
 }
 
-float SetNewFPSLimit(float NewFPSLimit)
+void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
 {
-	return 1.0f / NewFPSLimit;
+	Engine->TargetSecondsPerFrame = 1 / FPSLimit;
 }
 
 float UpdateFrameRate(VoodooEngine* Engine)
@@ -151,24 +151,176 @@ void CloseApp(VoodooEngine* Engine)
 	delete Engine;
 }
 
-void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize, int MouseRenderLayer)
+void ShiftBitmapToLetter(int LetterID, BitmapComponent* LetterBitmap, Text* TextParent)
 {
-	// Add mouse collider used for detecting mouse "hover" (is invisible as default)
+	LetterBitmap->BitmapParams.BitmapSource.X = TextParent->LetterSpace * LetterID;
+	LetterBitmap->BitmapParams.BitmapOffsetLeft.X =
+		LetterBitmap->BitmapParams.BitmapSource.X - TextParent->LetterSpace;
+	LetterBitmap->BitmapParams.BitmapOffsetRight.X = TextParent->LetterSpace;
+}
+
+void AssignLetterShiftByID(std::string Letter, BitmapComponent* LetterBitmap, Text* TextParent)
+{
+	// The numbers represent a location in the font bitmap
+
+	if (Letter == "a")
+		ShiftBitmapToLetter(1, LetterBitmap, TextParent);
+	if (Letter == "b")
+		ShiftBitmapToLetter(2, LetterBitmap, TextParent);
+	if (Letter == "c")
+		ShiftBitmapToLetter(3, LetterBitmap, TextParent);
+	if (Letter == "d")
+		ShiftBitmapToLetter(4, LetterBitmap, TextParent);
+	if (Letter == "e")
+		ShiftBitmapToLetter(5, LetterBitmap, TextParent);
+	if (Letter == "f")
+		ShiftBitmapToLetter(6, LetterBitmap, TextParent);
+	if (Letter == "g")
+		ShiftBitmapToLetter(7, LetterBitmap, TextParent);
+	if (Letter == "h")
+		ShiftBitmapToLetter(8, LetterBitmap, TextParent);
+	if (Letter == "i")
+		ShiftBitmapToLetter(9, LetterBitmap, TextParent);
+	if (Letter == "j")
+		ShiftBitmapToLetter(10, LetterBitmap, TextParent);
+	if (Letter == "k")
+		ShiftBitmapToLetter(11, LetterBitmap, TextParent);
+	if (Letter == "l")
+		ShiftBitmapToLetter(12, LetterBitmap, TextParent);
+	if (Letter == "m")
+		ShiftBitmapToLetter(13, LetterBitmap, TextParent);
+	if (Letter == "n")
+		ShiftBitmapToLetter(14, LetterBitmap, TextParent);
+	if (Letter == "o")
+		ShiftBitmapToLetter(15, LetterBitmap, TextParent);
+	if (Letter == "p")
+		ShiftBitmapToLetter(16, LetterBitmap, TextParent);
+	if (Letter == "q")
+		ShiftBitmapToLetter(17, LetterBitmap, TextParent);
+	if (Letter == "r")
+		ShiftBitmapToLetter(18, LetterBitmap, TextParent);
+	if (Letter == "s")
+		ShiftBitmapToLetter(19, LetterBitmap, TextParent);
+	if (Letter == "t")
+		ShiftBitmapToLetter(20, LetterBitmap, TextParent);
+	if (Letter == "u")
+		ShiftBitmapToLetter(21, LetterBitmap, TextParent);
+	if (Letter == "v")
+		ShiftBitmapToLetter(22, LetterBitmap, TextParent);
+	if (Letter == "w")
+		ShiftBitmapToLetter(23, LetterBitmap, TextParent);
+	if (Letter == "x")
+		ShiftBitmapToLetter(24, LetterBitmap, TextParent);
+	if (Letter == "y")
+		ShiftBitmapToLetter(25, LetterBitmap, TextParent);
+	if (Letter == "z")
+		ShiftBitmapToLetter(26, LetterBitmap, TextParent);
+	if (Letter == ".")
+		ShiftBitmapToLetter(27, LetterBitmap, TextParent);
+	if (Letter == ",")
+		ShiftBitmapToLetter(28, LetterBitmap, TextParent);
+	if (Letter == "?")
+		ShiftBitmapToLetter(29, LetterBitmap, TextParent);
+	if (Letter == "!")
+		ShiftBitmapToLetter(30, LetterBitmap, TextParent);
+}
+
+void CreateLetter(
+	VoodooEngine* Engine, Text* TextParent, std::string LetterString, 
+	SVector LetterLocation, const wchar_t* FontAssetPath)
+{
+	BitmapComponent* CreatedLetter = new BitmapComponent();
+	CreatedLetter->Bitmap = CreateNewBitmap(Engine->Renderer, FontAssetPath);
+	CreatedLetter->BitmapParams = SetupBitmapParams(CreatedLetter->Bitmap);
+	CreatedLetter->ComponentLocation = LetterLocation;
+	AssignLetterShiftByID(LetterString, CreatedLetter, TextParent);
+	TextParent->StoredLetters.push_back(CreatedLetter);
+}
+
+Text* CreateText(VoodooEngine* Engine, Text* TextToCreate, ButtonParameters ButtonParams,
+	const wchar_t* FontAssetPath)
+{
+	TextToCreate = new Text();
+	SVector LetterLocation = ButtonParams.ButtonLocation;
+	LetterLocation.Y = ButtonParams.ButtonLocation.Y + ButtonParams.ButtonTextOffset.Y;
+	float LetterOffsetX = LetterLocation.X + ButtonParams.ButtonTextOffset.X;
+	for (int i = 0; i < ButtonParams.ButtonTextString.length(); i++)
+	{
+		// Makes room for the next letter in the text
+		LetterOffsetX += TextToCreate->LetterSpace;
+		LetterLocation.X = LetterOffsetX;
+
+		// Create the next letter in the button text string 
+		// (don´t create and leave white space if "_" symbol is found, 
+		// but still offset the location for the next letter)
+		if (ButtonParams.ButtonTextString.substr(i, 1) != "_")
+		{
+			CreateLetter(
+				Engine, TextToCreate, ButtonParams.ButtonTextString.substr(i, 1),
+				LetterLocation, FontAssetPath);
+		}
+	}
+	return TextToCreate;
+}
+
+Button* CreateButton(
+	VoodooEngine* Engine, Button* ButtonToCreate, ButtonParameters ButtonParams,
+	const wchar_t* FontAssetPath)
+{
+	// Create button bitmap and set the button location
+	ButtonToCreate->ButtonBitmap = new BitmapComponent();
+	ButtonToCreate->ButtonBitmap->Bitmap = 
+		CreateNewBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
+	ButtonToCreate->ButtonBitmap->BitmapParams = 
+		SetupBitmapParams(ButtonToCreate->ButtonBitmap->Bitmap);
+	Engine->StoredEditorBitmaps.push_back(ButtonToCreate->ButtonBitmap);
+	ButtonToCreate->ButtonBitmap->ComponentLocation = ButtonParams.ButtonLocation;
+	SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, ButtonParams.ButtonWidth);
+
+	// Create button collider
+	ButtonToCreate->ButtonCollider = new CollisionComponent();
+	ButtonToCreate->ButtonCollider->CollisionRect = ButtonToCreate->ButtonBitmap->BitmapParams.BitmapSource;
+	ButtonToCreate->ButtonCollider->ComponentLocation = ButtonToCreate->ButtonBitmap->ComponentLocation;
+	ButtonToCreate->ButtonCollider->CollisionTag = ButtonParams.ButtonCollisionTag;
+	
+	if (Engine->DebugMode)
+	{
+		// Set purple color as default
+		ButtonToCreate->ButtonCollider->CollisionRectColor = {200, 0, 255};
+		ButtonToCreate->ButtonCollider->RenderCollisionRect = true;
+		Engine->StoredCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
+	}
+
+	// Create text for button
+	ButtonToCreate->ButtonText = CreateText(Engine, ButtonToCreate->ButtonText, ButtonParams, FontAssetPath);
+	// Store all created letters to be rendered
+	for (int i = 0; i < ButtonToCreate->ButtonText->StoredLetters.size(); i++)
+	{
+		Engine->StoredEditorTexts.push_back(ButtonToCreate->ButtonText->StoredLetters[i]);
+	}
+
+	return ButtonToCreate;
+}
+
+void DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete)
+{
+	// Delete and free up memory from every object created with "new" related to button here 
+}
+
+void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
+{
+	// Add mouse collider used for detecting mouse "hover" (is invisible as default, when not in debug mode)
 	Engine->Mouse.MouseCollider = new CollisionComponent();
 	SetMouseColliderSize(Engine, MouseColliderSize);
 	Engine->StoredCollisionComponents.push_back(Engine->Mouse.MouseCollider);
 
-	// Set custom mouse cursor if found, otherwise render mouse collider instead
 	Engine->Mouse.MouseBitmap = new BitmapComponent();
 	Engine->Mouse.MouseBitmap->Bitmap = CreateNewBitmap(Engine->Renderer, L"CustomMouseCursor.png");
-	
+
+	// Setup custom mouse cursor bitmap if found, otherwise render mouse collider instead
 	if (Engine->Mouse.MouseBitmap->Bitmap)
 	{
 		Engine->Mouse.MouseBitmap->BitmapParams = SetupBitmapParams(Engine->Mouse.MouseBitmap->Bitmap);
-		Engine->StoredBitmapComponents.push_back(Engine->Mouse.MouseBitmap);
-
-		// Render mouse cursor on top of everything else (highest render layer)
-		Engine->Mouse.MouseBitmap->BitmapParams.RenderLayer = MouseRenderLayer;
 
 		if (Engine->DebugMode)
 			Engine->Mouse.MouseCollider->RenderCollisionRect = true;
@@ -188,7 +340,6 @@ void DeleteMouse(VoodooEngine* Engine)
 {
 	if (Engine->Mouse.MouseBitmap)
 	{
-		DeleteBitmapComponent(Engine, Engine->Mouse.MouseBitmap);
 		delete Engine->Mouse.MouseBitmap;
 		Engine->Mouse.MouseBitmap = nullptr;
 	}
@@ -232,7 +383,7 @@ void UpdateCustomMouseCursor(VoodooEngine* Engine)
 		POINT MousePosition;
 		if (GetCursorPos(&MousePosition))
 		{
-			SVector NewMousePos = { 0,0 };
+			SVector NewMousePos = {0,0};
 			NewMousePos.X = MousePosition.x;
 			NewMousePos.Y = MousePosition.y;
 
@@ -380,6 +531,17 @@ SBitmap SetupBitmapParams(ID2D1Bitmap* BitmapToSetup)
 	return BitmapSetup;
 }
 
+void SetBitmapSourceLocationX(
+	BitmapComponent* BitmapToUpdate, int BitmapSourceWidth, int BitmapOffsetMultiplier)
+{
+	BitmapToUpdate->BitmapParams.BitmapSource.X = BitmapSourceWidth * BitmapOffsetMultiplier;
+
+	BitmapToUpdate->BitmapParams.BitmapOffsetLeft.X = 
+		BitmapToUpdate->BitmapParams.BitmapSource.X - BitmapSourceWidth;
+
+	BitmapToUpdate->BitmapParams.BitmapOffsetRight.X = BitmapSourceWidth;
+}
+
 void UpdateAnimationState(AnimationParameters &AnimationParams,
 	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight)
 {
@@ -449,10 +611,8 @@ void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer,
 			D2D1::RectF(
 			StoredBitmaps[i]->ComponentLocation.X,
 			StoredBitmaps[i]->ComponentLocation.Y,
-			StoredBitmaps[i]->ComponentLocation.X +
-			StoredBitmaps[i]->BitmapParams.BitmapOffsetRight.X,
-			StoredBitmaps[i]->ComponentLocation.Y +
-			StoredBitmaps[i]->BitmapParams.BitmapOffsetRight.Y);
+			StoredBitmaps[i]->ComponentLocation.X + StoredBitmaps[i]->BitmapParams.BitmapOffsetRight.X,
+			StoredBitmaps[i]->ComponentLocation.Y + StoredBitmaps[i]->BitmapParams.BitmapOffsetRight.Y);
 
 		D2D_RECT_F SourceRect =
 			D2D1::RectF(
@@ -478,6 +638,96 @@ void RenderBitmap(ID2D1HwndRenderTarget* Renderer,
 	{
 		RenderBitmapByLayer(Renderer, BitmapsToRender, i);
 	}
+}
+
+void RenderEditorBitmaps(ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> EditorBitmapsToRender)
+{
+	for (int i = 0; i < EditorBitmapsToRender.size(); i++)
+	{
+		if (!EditorBitmapsToRender[i])
+			continue;
+
+		D2D_RECT_F DestRect =
+			D2D1::RectF(
+				EditorBitmapsToRender[i]->ComponentLocation.X,
+				EditorBitmapsToRender[i]->ComponentLocation.Y,
+				EditorBitmapsToRender[i]->ComponentLocation.X +
+				EditorBitmapsToRender[i]->BitmapParams.BitmapOffsetRight.X,
+				EditorBitmapsToRender[i]->ComponentLocation.Y +
+				EditorBitmapsToRender[i]->BitmapParams.BitmapOffsetRight.Y);
+
+		D2D_RECT_F SourceRect =
+			D2D1::RectF(
+				EditorBitmapsToRender[i]->BitmapParams.BitmapOffsetLeft.X,
+				EditorBitmapsToRender[i]->BitmapParams.BitmapOffsetLeft.Y,
+				EditorBitmapsToRender[i]->BitmapParams.BitmapSource.X,
+				EditorBitmapsToRender[i]->BitmapParams.BitmapSource.Y);
+
+		Renderer->DrawBitmap(
+			EditorBitmapsToRender[i]->Bitmap,
+			DestRect,
+			// Always render editor bitmap at full opacity
+			1,
+			D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+			SourceRect);
+	}
+}
+
+void RenderEditorTexts(ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> EditorTextsToRender)
+{
+	for (int i = 0; i < EditorTextsToRender.size(); i++)
+	{
+		D2D_RECT_F DestRect =
+			D2D1::RectF(
+				EditorTextsToRender[i]->ComponentLocation.X,
+			EditorTextsToRender[i]->ComponentLocation.Y,
+			EditorTextsToRender[i]->ComponentLocation.X +
+			EditorTextsToRender[i]->BitmapParams.BitmapOffsetRight.X,
+			EditorTextsToRender[i]->ComponentLocation.Y +
+			EditorTextsToRender[i]->BitmapParams.BitmapOffsetRight.Y);
+
+		D2D_RECT_F SourceRect =
+			D2D1::RectF(
+			EditorTextsToRender[i]->BitmapParams.BitmapOffsetLeft.X,
+			EditorTextsToRender[i]->BitmapParams.BitmapOffsetLeft.Y,
+			EditorTextsToRender[i]->BitmapParams.BitmapSource.X,
+			EditorTextsToRender[i]->BitmapParams.BitmapSource.Y);
+
+		Renderer->DrawBitmap(
+			EditorTextsToRender[i]->Bitmap,
+			DestRect,
+			// Always render editor text at full opacity
+			1,
+			D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+			SourceRect);
+	}
+}
+
+void RenderMouseCursorBitmap(ID2D1HwndRenderTarget* Renderer, BitmapComponent* MouseCursorBitmap)
+{
+	if (!MouseCursorBitmap)
+		return;
+
+	D2D_RECT_F DestRect =
+		D2D1::RectF(
+		MouseCursorBitmap->ComponentLocation.X,
+		MouseCursorBitmap->ComponentLocation.Y,
+		MouseCursorBitmap->ComponentLocation.X + MouseCursorBitmap->BitmapParams.BitmapOffsetRight.X,
+		MouseCursorBitmap->ComponentLocation.Y + MouseCursorBitmap->BitmapParams.BitmapOffsetRight.Y);
+
+	D2D_RECT_F SourceRect =
+		D2D1::RectF(
+		MouseCursorBitmap->BitmapParams.BitmapOffsetLeft.X,
+		MouseCursorBitmap->BitmapParams.BitmapOffsetLeft.Y,
+		MouseCursorBitmap->BitmapParams.BitmapSource.X,
+		MouseCursorBitmap->BitmapParams.BitmapSource.Y);
+
+	Renderer->DrawBitmap(
+		MouseCursorBitmap->Bitmap,
+		DestRect,
+		MouseCursorBitmap->BitmapParams.Opacity,
+		D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+		SourceRect);
 }
 
 bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)

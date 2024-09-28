@@ -111,6 +111,9 @@ extern "C" VOODOOENGINE_API ID2D1Bitmap* CreateNewBitmap(
 	ID2D1HwndRenderTarget* RenderTarget, const wchar_t* FileName, bool Flip = false);
 // Setup bitmap struct
 extern "C" VOODOOENGINE_API SBitmap SetupBitmapParams(ID2D1Bitmap* CreatedBitmap);
+// Offset bitmap
+extern "C" VOODOOENGINE_API void SetBitmapSourceLocationX(
+	BitmapComponent* BitmapToUpdate, int BitmapSourceWidth, int LocationOffsetMultiplier = 1);
 //-------------------------------------------
 
 // Animation
@@ -120,7 +123,7 @@ extern "C" VOODOOENGINE_API SBitmap SetupBitmapParams(ID2D1Bitmap* CreatedBitmap
 struct AnimationParameters
 {
 	int AnimationState = 1;
-	float AnimationSpeed = 1.0f;
+	float AnimationSpeed = 1;
 	int TotalFrames = 1;
 	int FrameWidth = 0;
 	int FrameHeight = 0;
@@ -180,7 +183,7 @@ public:
 	bool RenderCollisionRect = false;
 	int CollisionTag = 0;
 	std::vector<int> CollisionTagsToIgnore;
-	SColor CollisionRectColor = {255,255,255};
+	SColor CollisionRectColor = {255, 255, 255};
 	SVector CollisionRect = {0,0};
 	SVector CollisionRectOffset = {0,0};
 };
@@ -190,6 +193,16 @@ extern "C" VOODOOENGINE_API void CheckForCollision(
 	Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target);
 extern "C" VOODOOENGINE_API void CheckForCollisionMultiple(
 	Object* CallbackOwner, CollisionComponent* Sender, std::vector<CollisionComponent*> Targets);
+//-------------------------------------------
+
+// Text class
+//-------------------------------------------
+class Text
+{
+public:
+	std::vector<BitmapComponent*> StoredLetters;
+	int LetterSpace = 12;
+};
 //-------------------------------------------
 
 // Rendering
@@ -203,6 +216,12 @@ extern "C" VOODOOENGINE_API void RenderBitmap(
 	int MaxNumRenderLayers);
 extern "C" VOODOOENGINE_API void RenderCollisionRectangles(
 	ID2D1HwndRenderTarget* Renderer, std::vector<CollisionComponent*> CollisionRectsToRender);
+extern "C" VOODOOENGINE_API void RenderEditorBitmaps(
+	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> EditorBitmapsToRender);
+extern "C" VOODOOENGINE_API void RenderEditorTexts(
+	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> EditorTextsToRender);
+extern "C" VOODOOENGINE_API void RenderMouseCursorBitmap(
+	ID2D1HwndRenderTarget* Renderer, BitmapComponent* MouseCursorBitmap);
 //-------------------------------------------
 
 // Update component inherited in all objects that needs to update each frame
@@ -211,17 +230,6 @@ class UpdateComponent
 {
 public:
 	virtual void Update(float DeltaTime) = 0;
-};
-//-------------------------------------------
-
-// Button
-//-------------------------------------------
-class Button
-{
-public:
-	CollisionComponent* ButtonCollider = nullptr;
-	BitmapComponent* ButtonBitmap = nullptr;
-	int ButtonID = 0;
 };
 //-------------------------------------------
 
@@ -253,7 +261,7 @@ public:
 	LARGE_INTEGER Counts;
 	LARGE_INTEGER Frequency;
 	LARGE_INTEGER FPS;
-	float TargetSecondsPerFrame = 1.0f / 80.0f;
+	float TargetSecondsPerFrame = 1 / 80;
 	float DeltaTime = 0;
 	std::vector<Object*> StoredObjects;
 	std::vector<UpdateComponent*> StoredUpdateComponents;
@@ -261,14 +269,47 @@ public:
 	std::vector<BitmapComponent*> StoredBitmapComponents;
 	std::map<int, bool> StoredInputs;
 	std::vector<InputCallback*> StoredInputCallbacks;
+
+	// Only used in editor mode
+	std::vector<BitmapComponent*> StoredEditorBitmaps;
+	std::vector<BitmapComponent*> StoredEditorTexts;
 };
-extern "C" VOODOOENGINE_API void CreateMouse(VoodooEngine* Engine, 
-	SVector MouseColliderSize, int MouseRenderLayer);
+extern "C" VOODOOENGINE_API void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize);
 extern "C" VOODOOENGINE_API void DeleteMouse(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize);
 extern "C" VOODOOENGINE_API void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation);
 extern "C" VOODOOENGINE_API void UpdateCustomMouseCursor(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API bool HideSystemMouseCursor(UINT Message, LPARAM LParam);
+//-------------------------------------------
+
+// Button
+//-------------------------------------------
+struct ButtonParameters
+{
+	const wchar_t* AssetPathButtonBitmap = L"";
+	int ButtonCollisionTag = 0;
+	int ButtonWidth = 140;
+	std::string ButtonTextString = "";
+	SVector ButtonTextOffset = {-2, 10};
+	SVector ButtonLocation = {0,0};
+};
+class Button
+{
+public:
+	CollisionComponent* ButtonCollider = nullptr;
+	BitmapComponent* ButtonBitmap = nullptr;
+	ButtonParameters ButtonParams = {};
+	Text* ButtonText = nullptr;
+};
+extern "C" VOODOOENGINE_API Button* CreateButton(
+	VoodooEngine* Engine, Button* ButtonToCreate, ButtonParameters ButtonParams, const wchar_t* FontAssetPath);
+extern "C" VOODOOENGINE_API void DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete);
+//-------------------------------------------
+
+// Create text
+//-------------------------------------------
+extern "C" VOODOOENGINE_API Text* CreateText(
+	VoodooEngine* Engine, Text* TextToCreate, ButtonParameters ButtonParams, const wchar_t* FontAssetPath);
 //-------------------------------------------
 
 // Create/Delete
@@ -287,7 +328,7 @@ extern "C" VOODOOENGINE_API void Update(VoodooEngine* Engine, float DeltaTime);
 //-------------------------------------------
 extern "C" VOODOOENGINE_API float GetSecondsPerFrame(
 	LARGE_INTEGER* StartCounter, LARGE_INTEGER* EndCounter, LARGE_INTEGER* Frequency);
-extern "C" VOODOOENGINE_API float SetNewFPSLimit(float NewFPSLimit);
+extern "C" VOODOOENGINE_API void SetFPSLimit(VoodooEngine* Engine, float FPSLimit);
 extern "C" VOODOOENGINE_API float UpdateFrameRate(VoodooEngine* Engine);
 //-------------------------------------------
 
