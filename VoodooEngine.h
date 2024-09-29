@@ -211,17 +211,13 @@ extern "C" VOODOOENGINE_API ID2D1HwndRenderTarget* SetupRenderer(
 	ID2D1HwndRenderTarget* RenderTarget, HWND WindowHandle);
 extern "C" VOODOOENGINE_API void RenderBitmapByLayer(
 	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> StoredBitmaps, int RenderLayer);
-extern "C" VOODOOENGINE_API void RenderBitmap(
+extern "C" VOODOOENGINE_API void RenderBitmaps(
 	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> BitmapsToRender, 
-	int MaxNumRenderLayers);
+	int MaxNumRenderLayers = 0);
 extern "C" VOODOOENGINE_API void RenderCollisionRectangles(
 	ID2D1HwndRenderTarget* Renderer, std::vector<CollisionComponent*> CollisionRectsToRender);
-extern "C" VOODOOENGINE_API void RenderEditorBitmaps(
-	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> EditorBitmapsToRender);
-extern "C" VOODOOENGINE_API void RenderEditorTexts(
-	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> EditorTextsToRender);
-extern "C" VOODOOENGINE_API void RenderMouseCursorBitmap(
-	ID2D1HwndRenderTarget* Renderer, BitmapComponent* MouseCursorBitmap);
+extern "C" VOODOOENGINE_API void RenderCollisionRectangle(
+	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectangleToRender);
 //-------------------------------------------
 
 // Update component inherited in all objects that needs to update each frame
@@ -270,9 +266,18 @@ public:
 	std::map<int, bool> StoredInputs;
 	std::vector<InputCallback*> StoredInputCallbacks;
 
+	// Global font asset paths
+	const wchar_t* DefaultFont = L"EngineContent/Font/FontMonogram.png";
+	const wchar_t* DebugFont = L"EngineContent/Font/FontMonogramDebug.png";
+
 	// Only used in editor mode
-	std::vector<BitmapComponent*> StoredEditorBitmaps;
-	std::vector<BitmapComponent*> StoredEditorTexts;
+	std::vector<BitmapComponent*> StoredEditorBitmapComponents;
+	// Used only for console debug print
+	std::vector<BitmapComponent*> StoredScreenPrintTexts;
+	// This keeps track of the number of console text prints have been printed
+	// (Offsets a newly printed text down a column if text in column already has been printed)
+	// Will reset once console window is deleted
+	int ScreenColumnsPrinted = 0;
 };
 extern "C" VOODOOENGINE_API void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize);
 extern "C" VOODOOENGINE_API void DeleteMouse(VoodooEngine* Engine);
@@ -280,6 +285,7 @@ extern "C" VOODOOENGINE_API void SetMouseColliderSize(VoodooEngine* Engine, SVec
 extern "C" VOODOOENGINE_API void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation);
 extern "C" VOODOOENGINE_API void UpdateCustomMouseCursor(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API bool HideSystemMouseCursor(UINT Message, LPARAM LParam);
+extern "C" VOODOOENGINE_API void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine);
 //-------------------------------------------
 
 // Button
@@ -302,20 +308,16 @@ public:
 	Text* ButtonText = nullptr;
 };
 extern "C" VOODOOENGINE_API Button* CreateButton(
-	VoodooEngine* Engine, Button* ButtonToCreate, ButtonParameters ButtonParams, const wchar_t* FontAssetPath);
+	VoodooEngine* Engine, Button* ButtonToCreate, ButtonParameters ButtonParams);
 extern "C" VOODOOENGINE_API void DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete);
-//-------------------------------------------
-
-// Create text
-//-------------------------------------------
-extern "C" VOODOOENGINE_API Text* CreateText(
-	VoodooEngine* Engine, Text* TextToCreate, ButtonParameters ButtonParams, const wchar_t* FontAssetPath);
 //-------------------------------------------
 
 // Create/Delete
 //-------------------------------------------
 extern "C" VOODOOENGINE_API void DeleteBitmapComponent(VoodooEngine* Engine, BitmapComponent* Component);
 extern "C" VOODOOENGINE_API void DeleteCollisionComponent(VoodooEngine* Engine, CollisionComponent* Component);
+extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void ClearScreenPrints(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void CloseApp(VoodooEngine* Engine);
 //-------------------------------------------
 
