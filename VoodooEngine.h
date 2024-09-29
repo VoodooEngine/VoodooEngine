@@ -103,6 +103,11 @@ struct SBitmap
 class BitmapComponent : public TransformComponent
 {
 public:
+	~BitmapComponent()
+	{
+		Bitmap = nullptr;
+	}
+
 	ID2D1Bitmap* Bitmap = nullptr;
 	SBitmap BitmapParams = {};
 };
@@ -195,16 +200,6 @@ extern "C" VOODOOENGINE_API void CheckForCollisionMultiple(
 	Object* CallbackOwner, CollisionComponent* Sender, std::vector<CollisionComponent*> Targets);
 //-------------------------------------------
 
-// Text class
-//-------------------------------------------
-class Text
-{
-public:
-	std::vector<BitmapComponent*> StoredLetters;
-	int LetterSpace = 12;
-};
-//-------------------------------------------
-
 // Rendering
 //-------------------------------------------
 extern "C" VOODOOENGINE_API ID2D1HwndRenderTarget* SetupRenderer(
@@ -269,6 +264,9 @@ public:
 	// Global font asset paths
 	const wchar_t* DefaultFont = L"EngineContent/Font/FontMonogram.png";
 	const wchar_t* DebugFont = L"EngineContent/Font/FontMonogramDebug.png";
+	
+	// This determines the letter space for any texts created
+	int LetterSpace = 12;
 
 	// Only used in editor mode
 	std::vector<BitmapComponent*> StoredEditorBitmapComponents;
@@ -305,7 +303,6 @@ public:
 	CollisionComponent* ButtonCollider = nullptr;
 	BitmapComponent* ButtonBitmap = nullptr;
 	ButtonParameters ButtonParams = {};
-	Text* ButtonText = nullptr;
 };
 extern "C" VOODOOENGINE_API Button* CreateButton(
 	VoodooEngine* Engine, Button* ButtonToCreate, ButtonParameters ButtonParams);
@@ -317,7 +314,7 @@ extern "C" VOODOOENGINE_API void DeleteButton(VoodooEngine* Engine, Button* Butt
 extern "C" VOODOOENGINE_API void DeleteBitmapComponent(VoodooEngine* Engine, BitmapComponent* Component);
 extern "C" VOODOOENGINE_API void DeleteCollisionComponent(VoodooEngine* Engine, CollisionComponent* Component);
 extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
-extern "C" VOODOOENGINE_API void ClearScreenPrints(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void ClearScreenPrint(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void CloseApp(VoodooEngine* Engine);
 //-------------------------------------------
 

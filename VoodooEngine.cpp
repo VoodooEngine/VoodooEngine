@@ -139,11 +139,6 @@ void DeleteCollisionComponent(VoodooEngine* Engine, CollisionComponent* Componen
 		Engine->StoredCollisionComponents.end(), Component));
 }
 
-void ClearScreenPrints(VoodooEngine* Engine)
-{
-
-}
-
 void CloseApp(VoodooEngine* Engine)
 {
 	Engine->EngineRunning = false;
@@ -156,102 +151,102 @@ void CloseApp(VoodooEngine* Engine)
 	delete Engine;
 }
 
-void ShiftBitmapToLetter(int LetterID, BitmapComponent* LetterBitmap, Text* TextParent)
+void ShiftBitmapToLetter(int LetterID, BitmapComponent* LetterBitmap, VoodooEngine* Engine)
 {
-	LetterBitmap->BitmapParams.BitmapSource.X = TextParent->LetterSpace * LetterID;
+	LetterBitmap->BitmapParams.BitmapSource.X = Engine->LetterSpace * LetterID;
 	LetterBitmap->BitmapParams.BitmapOffsetLeft.X =
-		LetterBitmap->BitmapParams.BitmapSource.X - TextParent->LetterSpace;
-	LetterBitmap->BitmapParams.BitmapOffsetRight.X = TextParent->LetterSpace;
+		LetterBitmap->BitmapParams.BitmapSource.X - Engine->LetterSpace;
+	LetterBitmap->BitmapParams.BitmapOffsetRight.X = Engine->LetterSpace;
 }
 
-void AssignLetterShiftByID(std::string Letter, BitmapComponent* LetterBitmap, Text* TextParent)
+void AssignLetterShiftByID(std::string Letter, BitmapComponent* LetterBitmap, VoodooEngine* Engine)
 {
 	// The numbers represent a location in the font bitmap
 
 	if (Letter == "a")
-		ShiftBitmapToLetter(1, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(1, LetterBitmap, Engine);
 	if (Letter == "b")
-		ShiftBitmapToLetter(2, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(2, LetterBitmap, Engine);
 	if (Letter == "c")
-		ShiftBitmapToLetter(3, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(3, LetterBitmap, Engine);
 	if (Letter == "d")
-		ShiftBitmapToLetter(4, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(4, LetterBitmap, Engine);
 	if (Letter == "e")
-		ShiftBitmapToLetter(5, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(5, LetterBitmap, Engine);
 	if (Letter == "f")
-		ShiftBitmapToLetter(6, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(6, LetterBitmap, Engine);
 	if (Letter == "g")
-		ShiftBitmapToLetter(7, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(7, LetterBitmap, Engine);
 	if (Letter == "h")
-		ShiftBitmapToLetter(8, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(8, LetterBitmap, Engine);
 	if (Letter == "i")
-		ShiftBitmapToLetter(9, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(9, LetterBitmap, Engine);
 	if (Letter == "j")
-		ShiftBitmapToLetter(10, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(10, LetterBitmap, Engine);
 	if (Letter == "k")
-		ShiftBitmapToLetter(11, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(11, LetterBitmap, Engine);
 	if (Letter == "l")
-		ShiftBitmapToLetter(12, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(12, LetterBitmap, Engine);
 	if (Letter == "m")
-		ShiftBitmapToLetter(13, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(13, LetterBitmap, Engine);
 	if (Letter == "n")
-		ShiftBitmapToLetter(14, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(14, LetterBitmap, Engine);
 	if (Letter == "o")
-		ShiftBitmapToLetter(15, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(15, LetterBitmap, Engine);
 	if (Letter == "p")
-		ShiftBitmapToLetter(16, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(16, LetterBitmap, Engine);
 	if (Letter == "q")
-		ShiftBitmapToLetter(17, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(17, LetterBitmap, Engine);
 	if (Letter == "r")
-		ShiftBitmapToLetter(18, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(18, LetterBitmap, Engine);
 	if (Letter == "s")
-		ShiftBitmapToLetter(19, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(19, LetterBitmap, Engine);
 	if (Letter == "t")
-		ShiftBitmapToLetter(20, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(20, LetterBitmap, Engine);
 	if (Letter == "u")
-		ShiftBitmapToLetter(21, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(21, LetterBitmap, Engine);
 	if (Letter == "v")
-		ShiftBitmapToLetter(22, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(22, LetterBitmap, Engine);
 	if (Letter == "w")
-		ShiftBitmapToLetter(23, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(23, LetterBitmap, Engine);
 	if (Letter == "x")
-		ShiftBitmapToLetter(24, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(24, LetterBitmap, Engine);
 	if (Letter == "y")
-		ShiftBitmapToLetter(25, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(25, LetterBitmap, Engine);
 	if (Letter == "z")
-		ShiftBitmapToLetter(26, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(26, LetterBitmap, Engine);
 	if (Letter == ".")
-		ShiftBitmapToLetter(27, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(27, LetterBitmap, Engine);
 	if (Letter == ",")
-		ShiftBitmapToLetter(28, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(28, LetterBitmap, Engine);
 	if (Letter == "?")
-		ShiftBitmapToLetter(29, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(29, LetterBitmap, Engine);
 	if (Letter == "!")
-		ShiftBitmapToLetter(30, LetterBitmap, TextParent);
+		ShiftBitmapToLetter(30, LetterBitmap, Engine);
 }
 
-void CreateLetter(
-	VoodooEngine* Engine, Text* TextParent, std::string LetterString, 
+BitmapComponent* CreateLetter(
+	VoodooEngine* Engine, std::string LetterString, 
 	SVector LetterLocation, const wchar_t* Font)
 {
 	BitmapComponent* CreatedLetter = new BitmapComponent();
 	CreatedLetter->Bitmap = CreateNewBitmap(Engine->Renderer, Font);
 	CreatedLetter->BitmapParams = SetupBitmapParams(CreatedLetter->Bitmap);
 	CreatedLetter->ComponentLocation = LetterLocation;
-	AssignLetterShiftByID(LetterString, CreatedLetter, TextParent);
-	TextParent->StoredLetters.push_back(CreatedLetter);
+	AssignLetterShiftByID(LetterString, CreatedLetter, Engine);
+
+	return CreatedLetter;
 }
 
-Text* CreateText(VoodooEngine* Engine, Text* TextToCreate, ButtonParameters ButtonParams)
+void CreateText(VoodooEngine* Engine, ButtonParameters ButtonParams)
 {
-	TextToCreate = new Text();
 	SVector LetterLocation = ButtonParams.ButtonLocation;
 	LetterLocation.Y = ButtonParams.ButtonLocation.Y + ButtonParams.ButtonTextOffset.Y;
 	float LetterOffsetX = LetterLocation.X + ButtonParams.ButtonTextOffset.X;
 	for (int i = 0; i < ButtonParams.ButtonTextString.length(); i++)
 	{
 		// Makes room for the next letter in the text
-		LetterOffsetX += TextToCreate->LetterSpace;
+		LetterOffsetX += Engine->LetterSpace;
 		LetterLocation.X = LetterOffsetX;
 
 		// Create the next letter in the button text string 
@@ -259,17 +254,17 @@ Text* CreateText(VoodooEngine* Engine, Text* TextToCreate, ButtonParameters Butt
 		// but still offset the location for the next letter)
 		if (ButtonParams.ButtonTextString.substr(i, 1) != "_")
 		{
-			CreateLetter(Engine, TextToCreate, ButtonParams.ButtonTextString.substr(i, 1),
+			BitmapComponent* NewLetter = 
+				CreateLetter(Engine, ButtonParams.ButtonTextString.substr(i, 1),
 				LetterLocation, Engine->DefaultFont);
+
+			Engine->StoredEditorBitmapComponents.push_back(NewLetter);
 		}
 	}
-	return TextToCreate;
 }
 
 void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 {
-	Text* CreatedText = nullptr;
-	CreatedText = new Text();
 	SVector LetterLocation = {0,0};
 	float LetterOffsetX = LetterLocation.X;
 	Engine->ScreenColumnsPrinted += 1;
@@ -277,7 +272,7 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 	for (int i = 0; i < DebugText.length(); i++)
 	{
 		// Makes room for the next letter in the text
-		LetterOffsetX += CreatedText->LetterSpace;
+		LetterOffsetX += Engine->LetterSpace;
 		LetterLocation.X = LetterOffsetX;
 
 		// Create the next letter in the button text string 
@@ -285,14 +280,32 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 		// but still offset the location for the next letter)
 		if (DebugText.substr(i, 1) != "_")
 		{
-			CreateLetter(Engine, CreatedText, DebugText.substr(i, 1),
+			BitmapComponent* NewLetter = CreateLetter(Engine, DebugText.substr(i, 1),
 				LetterLocation, Engine->DebugFont);
-		}
-		for (int i = 0; i < CreatedText->StoredLetters.size(); i++)
-		{
-			Engine->StoredScreenPrintTexts.push_back(CreatedText->StoredLetters[i]);
+
+			Engine->StoredScreenPrintTexts.push_back(NewLetter);
 		}
 	}
+}
+
+void ClearScreenPrint(VoodooEngine* Engine)
+{
+	if (Engine->StoredScreenPrintTexts.empty())
+		return;
+
+	while (!Engine->StoredScreenPrintTexts.empty())
+	{
+		for (int i = 0; i < Engine->StoredScreenPrintTexts.size(); i++)
+		{
+			BitmapComponent* BitmapPointer = Engine->StoredScreenPrintTexts[i];
+			Engine->StoredScreenPrintTexts.erase(std::remove(
+				Engine->StoredScreenPrintTexts.begin(),
+				Engine->StoredScreenPrintTexts.end(), BitmapPointer));
+			delete BitmapPointer;
+		}
+	}
+
+	Engine->ScreenColumnsPrinted = 0;
 }
 
 Button* CreateButton(VoodooEngine* Engine, Button* ButtonToCreate, ButtonParameters ButtonParams)
@@ -322,12 +335,7 @@ Button* CreateButton(VoodooEngine* Engine, Button* ButtonToCreate, ButtonParamet
 	}
 
 	// Create text for button
-	ButtonToCreate->ButtonText = CreateText(Engine, ButtonToCreate->ButtonText, ButtonParams);
-	// Store all created letters to be rendered
-	for (int i = 0; i < ButtonToCreate->ButtonText->StoredLetters.size(); i++)
-	{
-		Engine->StoredEditorBitmapComponents.push_back(ButtonToCreate->ButtonText->StoredLetters[i]);
-	}
+	CreateText(Engine, ButtonParams);
 
 	return ButtonToCreate;
 }
