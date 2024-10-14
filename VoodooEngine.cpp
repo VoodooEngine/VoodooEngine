@@ -262,10 +262,12 @@ void CreateText(VoodooEngine* Engine, ButtonParameters ButtonParams)
 
 void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 {
-	SVector LetterLocation = { 0, 0 };
+	float OriginPositionY = 100;
+	SVector LetterLocation = { 0, OriginPositionY };
 	float LetterOffsetX = LetterLocation.X;
 	Engine->ScreenColumnsPrinted += 1;
-	float LetterOffsetY = LetterLocation.Y += (30 * Engine->ScreenColumnsPrinted);
+	float OffsetAmount = 30;
+	float LetterOffsetY = LetterLocation.Y += (OffsetAmount * Engine->ScreenColumnsPrinted);
 	for (int i = 0; i < DebugText.length(); i++)
 	{
 		// Makes room for the next letter in the text
