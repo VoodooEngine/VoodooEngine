@@ -4,27 +4,24 @@
 #include <sstream>
 #include <string>
 
-void SetupAppWindowParams(WNDCLASSEX &WindowClass, WNDPROC InputCallbackFunction)
+void CreateAppWindow(SWindowParams &WindowParams, WNDPROC InputCallbackFunction)
 {
 	LPCWSTR ClassName = L"Class";
 	HINSTANCE HInstance = nullptr;
-	WindowClass.cbSize = sizeof(WNDCLASSEX);
-	WindowClass.lpfnWndProc = InputCallbackFunction;
-	WindowClass.cbClsExtra = 0;
-	WindowClass.cbWndExtra = 0;
-	WindowClass.hInstance = HInstance;
-	WindowClass.lpszClassName = ClassName;
-	WindowClass.lpszMenuName = nullptr;
-	WindowClass.hbrBackground = nullptr;
-	WindowClass.hIcon = nullptr;
-	WindowClass.hIconSm = nullptr;
-	WindowClass.hCursor = nullptr;
+	WindowParams.WindowClass.cbSize = sizeof(WNDCLASSEX);
+	WindowParams.WindowClass.lpfnWndProc = InputCallbackFunction;
+	WindowParams.WindowClass.cbClsExtra = 0;
+	WindowParams.WindowClass.cbWndExtra = 0;
+	WindowParams.WindowClass.hInstance = HInstance;
+	WindowParams.WindowClass.lpszClassName = ClassName;
+	WindowParams.WindowClass.lpszMenuName = nullptr;
+	WindowParams.WindowClass.hbrBackground = nullptr;
+	WindowParams.WindowClass.hIcon = nullptr;
+	WindowParams.WindowClass.hIconSm = nullptr;
+	WindowParams.WindowClass.hCursor = nullptr;
 
-	RegisterClassEx(&WindowClass);
-}
+	RegisterClassEx(&WindowParams.WindowClass);
 
-void CreateAppWindow(SWindowParams &WindowParams)
-{
 	WindowParams.HWind = CreateWindow(
 		WindowParams.WindowClass.lpszClassName,
 		WindowParams.WindowTitle,
@@ -265,7 +262,7 @@ void CreateText(VoodooEngine* Engine, ButtonParameters ButtonParams)
 
 void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 {
-	SVector LetterLocation = {0,0};
+	SVector LetterLocation = { 0, 0 };
 	float LetterOffsetX = LetterLocation.X;
 	Engine->ScreenColumnsPrinted += 1;
 	float LetterOffsetY = LetterLocation.Y += (30 * Engine->ScreenColumnsPrinted);
@@ -329,7 +326,7 @@ Button* CreateButton(VoodooEngine* Engine, Button* ButtonToCreate, ButtonParamet
 	if (Engine->DebugMode)
 	{
 		// Set purple color as default
-		ButtonToCreate->ButtonCollider->CollisionRectColor = {200, 0, 255};
+		ButtonToCreate->ButtonCollider->CollisionRectColor = { 200, 0, 255 };
 		ButtonToCreate->ButtonCollider->RenderCollisionRect = true;
 		Engine->StoredCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
 	}
@@ -419,7 +416,7 @@ void UpdateCustomMouseCursor(VoodooEngine* Engine)
 		POINT MousePosition;
 		if (GetCursorPos(&MousePosition))
 		{
-			SVector NewMousePos = {0,0};
+			SVector NewMousePos = { 0, 0 };
 			NewMousePos.X = MousePosition.x;
 			NewMousePos.Y = MousePosition.y;
 
@@ -678,9 +675,9 @@ void RenderBitmaps(ID2D1HwndRenderTarget* Renderer,
 
 void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine)
 {
-	if (Engine->Mouse.MouseCollider->RenderCollisionRect)
+	// Render mouse collider as fallback if no custom cursor image file is found
+	if (!Engine->Mouse.MouseBitmap->Bitmap)
 	{
-		// Render mouse collider as fallback if no custom cursor image file is found 
 		RenderCollisionRectangle(Renderer, Engine->Mouse.MouseCollider);
 		return;
 	}

@@ -34,11 +34,9 @@ struct SWindowParams
 	int ScreenResolutionHeight;
 	int Fullscreen;
 };
-// Setup app window parameters preparing for window creation
-extern "C" VOODOOENGINE_API void SetupAppWindowParams(WNDCLASSEX &WindowClass, 
-	WNDPROC InputCallbackFunction);
 // Create window and return window handle
-extern "C" VOODOOENGINE_API void CreateAppWindow(SWindowParams &WindowParams);
+extern "C" VOODOOENGINE_API void CreateAppWindow(
+	SWindowParams &WindowParams, WNDPROC InputCallbackFunction);
 // This will set a custom assigned icon of the app window title/task bar
 extern "C" VOODOOENGINE_API void SetCustomAppIcon(LPCWSTR IconFileName, HWND &HWind);
 // Updates any changes made to the app window (e.g. dragging the window)
@@ -83,7 +81,7 @@ struct SColor
 class TransformComponent
 {
 public:
-	SVector ComponentLocation = {0,0};
+	SVector ComponentLocation = { 0, 0 };
 };
 //-------------------------------------------
 
@@ -95,9 +93,9 @@ struct SBitmap
 	int RenderLayer = 0;
 	float Opacity = 1;
 	bool HiddenInGame = false;
-	SVector BitmapOffsetLeft = {0,0};
-	SVector BitmapOffsetRight = {0,0};
-	SVector BitmapSource = {0,0};
+	SVector BitmapOffsetLeft = { 0, 0 };
+	SVector BitmapOffsetRight = { 0, 0 };
+	SVector BitmapSource = { 0, 0 };
 };
 // Bitmap component
 class BitmapComponent : public TransformComponent
@@ -164,7 +162,7 @@ extern "C" VOODOOENGINE_API void UpdateAnimation(
 class Object
 {
 public:
-	SVector Location = {0,0};
+	SVector Location = { 0, 0 };
 
 	virtual void OnBeginOverlap(int SenderCollisionTag, int TargetCollisionTag){};
 	virtual void OnEndOverlap(int SenderCollisionTag, int TargetCollisionTag){};
@@ -188,9 +186,9 @@ public:
 	bool RenderCollisionRect = false;
 	int CollisionTag = 0;
 	std::vector<int> CollisionTagsToIgnore;
-	SColor CollisionRectColor = {255, 255, 255};
-	SVector CollisionRect = {0,0};
-	SVector CollisionRectOffset = {0,0};
+	SColor CollisionRectColor = { 255, 255, 255 };
+	SVector CollisionRect = { 0, 0 };
+	SVector CollisionRectOffset = { 0, 0 };
 };
 extern "C" VOODOOENGINE_API bool IsCollisionDetected(
 	CollisionComponent* Sender, CollisionComponent* Target);
@@ -294,8 +292,8 @@ struct ButtonParameters
 	int ButtonCollisionTag = 0;
 	int ButtonWidth = 140;
 	std::string ButtonTextString = "";
-	SVector ButtonTextOffset = {-2, 10};
-	SVector ButtonLocation = {0,0};
+	SVector ButtonTextOffset = { -2, 10 };
+	SVector ButtonLocation = { 0, 0 };
 };
 class Button
 {
