@@ -315,26 +315,37 @@ Button* CreateButton(VoodooEngine* Engine, Button* ButtonToCreate, ButtonParamet
 		CreateNewBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
 	ButtonToCreate->ButtonBitmap->BitmapParams = 
 		SetupBitmapParams(ButtonToCreate->ButtonBitmap->Bitmap);
+	ButtonToCreate->ButtonBitmap->ComponentLocation = ButtonParams.ButtonLocation;	
+	int BitmapWidth = 0;
+	if (ButtonParams.ButtonType == TwoSided)
+	{
+		BitmapWidth = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width / 2;
+	}
+	else
+	{
+		BitmapWidth = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width;
+	}
+	SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, BitmapWidth);
 	Engine->StoredEditorBitmapComponents.push_back(ButtonToCreate->ButtonBitmap);
-	ButtonToCreate->ButtonBitmap->ComponentLocation = ButtonParams.ButtonLocation;
-	SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, ButtonParams.ButtonWidth);
 
 	// Create button collider
 	ButtonToCreate->ButtonCollider = new CollisionComponent();
 	ButtonToCreate->ButtonCollider->CollisionRect = ButtonToCreate->ButtonBitmap->BitmapParams.BitmapSource;
 	ButtonToCreate->ButtonCollider->ComponentLocation = ButtonToCreate->ButtonBitmap->ComponentLocation;
 	ButtonToCreate->ButtonCollider->CollisionTag = ButtonParams.ButtonCollisionTag;
-	
 	if (Engine->DebugMode)
 	{
 		// Set purple color as default
 		ButtonToCreate->ButtonCollider->CollisionRectColor = { 200, 0, 255 };
 		ButtonToCreate->ButtonCollider->RenderCollisionRect = true;
-		Engine->StoredCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
 	}
+	Engine->StoredCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
 
-	// Create text for button
-	CreateText(Engine, ButtonParams);
+	if (ButtonParams.ButtonTextString != "")
+	{
+		// Create text for button
+		CreateText(Engine, ButtonParams);
+	}
 
 	return ButtonToCreate;
 }
@@ -724,7 +735,13 @@ bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
 
 void CheckForCollision(Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target)
 {
+	if (!Sender)
+		return;
+
 	if (!Target)
+		return;
+
+	if (Sender->NoCollision)
 		return;
 
 	if (Target->NoCollision)
@@ -759,6 +776,12 @@ void CheckForCollision(Object* CallbackOwner, CollisionComponent* Sender, Collis
 
 void CheckForCollisionMultiple(Object* CallbackOwner, CollisionComponent* Sender, std::vector<CollisionComponent*> Targets)
 {
+	if (!Sender)
+		return;
+
+	if (Sender->NoCollision)
+		return;
+
 	for (int i = 0; i < Targets.size(); i++)
 	{
 		if (!Targets[i])
