@@ -144,7 +144,6 @@ void CloseApp(VoodooEngine* Engine)
 	Engine->StoredUpdateComponents.clear();
 	Engine->StoredInputCallbacks.clear();
 	Engine->StoredInputs.clear();
-	Engine->StoredObjects.clear();
 	delete Engine;
 }
 
@@ -235,7 +234,7 @@ BitmapComponent* CreateLetter(
 	return CreatedLetter;
 }
 
-void CreateText(VoodooEngine* Engine, ButtonParameters ButtonParams)
+void CreateText(VoodooEngine* Engine, Button* ButtonReference, ButtonParameters ButtonParams)
 {
 	SVector LetterLocation = ButtonParams.ButtonLocation;
 	LetterLocation.Y = ButtonParams.ButtonLocation.Y + ButtonParams.ButtonTextOffset.Y;
@@ -255,7 +254,8 @@ void CreateText(VoodooEngine* Engine, ButtonParameters ButtonParams)
 				CreateLetter(Engine, ButtonParams.ButtonTextString.substr(i, 1),
 				LetterLocation, Engine->DefaultFont);
 
-			Engine->StoredEditorBitmapComponents.push_back(NewLetter);
+			ButtonReference->ButtonText.push_back(NewLetter);
+			Engine->StoredButtonTexts.push_back(NewLetter);
 		}
 	}
 }
@@ -265,9 +265,9 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 	float OriginPositionY = 100;
 	SVector LetterLocation = { 0, OriginPositionY };
 	float LetterOffsetX = LetterLocation.X;
-	Engine->ScreenColumnsPrinted += 1;
+	Engine->ScreenPrintTextColumnsPrinted += 1;
 	float OffsetAmount = 30;
-	float LetterOffsetY = LetterLocation.Y += (OffsetAmount * Engine->ScreenColumnsPrinted);
+	float LetterOffsetY = LetterLocation.Y += (OffsetAmount * Engine->ScreenPrintTextColumnsPrinted);
 	for (int i = 0; i < DebugText.length(); i++)
 	{
 		// Makes room for the next letter in the text
@@ -304,20 +304,30 @@ void ClearScreenPrint(VoodooEngine* Engine)
 		}
 	}
 
-	Engine->ScreenColumnsPrinted = 0;
+	Engine->ScreenPrintTextColumnsPrinted = 0;
 }
 
-Button* CreateButton(VoodooEngine* Engine, Button* ButtonToCreate, ButtonParameters ButtonParams)
+Button* CreateButton(VoodooEngine* Engine, EButtonType ButtonType,
+	Button* ButtonToCreate, std::string ButtonName, int ButtonID,
+	SVector ButtonLocation, const wchar_t* AssetPath)
 {
-	// Create button bitmap and set the button location
+	// Create button class and setup button parameters
+	ButtonToCreate = new Button();
+	ButtonToCreate->ButtonParams.ButtonType = ButtonType;
+	ButtonToCreate->ButtonParams.AssetPathButtonBitmap = AssetPath;
+	ButtonToCreate->ButtonParams.ButtonLocation = ButtonLocation;
+	ButtonToCreate->ButtonParams.ButtonCollisionTag = ButtonID;
+	ButtonToCreate->ButtonParams.ButtonTextString = ButtonName;
+
+	// Create button bitmap and setup bitmap parameters
 	ButtonToCreate->ButtonBitmap = new BitmapComponent();
 	ButtonToCreate->ButtonBitmap->Bitmap = 
 		CreateNewBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
 	ButtonToCreate->ButtonBitmap->BitmapParams = 
 		SetupBitmapParams(ButtonToCreate->ButtonBitmap->Bitmap);
-	ButtonToCreate->ButtonBitmap->ComponentLocation = ButtonParams.ButtonLocation;	
+	ButtonToCreate->ButtonBitmap->ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;	
 	int BitmapWidth = 0;
-	if (ButtonParams.ButtonType == TwoSided)
+	if (ButtonToCreate->ButtonParams.ButtonType == TwoSided)
 	{
 		BitmapWidth = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width / 2;
 	}
@@ -326,33 +336,82 @@ Button* CreateButton(VoodooEngine* Engine, Button* ButtonToCreate, ButtonParamet
 		BitmapWidth = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width;
 	}
 	SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, BitmapWidth);
-	Engine->StoredEditorBitmapComponents.push_back(ButtonToCreate->ButtonBitmap);
+	Engine->StoredButtonBitmapComponents.push_back(ButtonToCreate->ButtonBitmap);
 
 	// Create button collider
 	ButtonToCreate->ButtonCollider = new CollisionComponent();
 	ButtonToCreate->ButtonCollider->CollisionRect = ButtonToCreate->ButtonBitmap->BitmapParams.BitmapSource;
 	ButtonToCreate->ButtonCollider->ComponentLocation = ButtonToCreate->ButtonBitmap->ComponentLocation;
-	ButtonToCreate->ButtonCollider->CollisionTag = ButtonParams.ButtonCollisionTag;
+	ButtonToCreate->ButtonCollider->CollisionTag = ButtonToCreate->ButtonParams.ButtonCollisionTag;
+	// Only render collision rect if in debug mode
 	if (Engine->DebugMode)
 	{
-		// Set purple color as default
-		ButtonToCreate->ButtonCollider->CollisionRectColor = { 200, 0, 255 };
+		ButtonToCreate->ButtonCollider->CollisionRectColor = Engine->EditorCollisionRectColor;
 		ButtonToCreate->ButtonCollider->RenderCollisionRect = true;
 	}
-	Engine->StoredCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
-
-	if (ButtonParams.ButtonTextString != "")
+	Engine->StoredButtonCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
+	
+	// Create text for button if button desired text is not empty
+	if (ButtonToCreate->ButtonParams.ButtonTextString != "")
 	{
-		// Create text for button
-		CreateText(Engine, ButtonParams);
+		CreateText(Engine, ButtonToCreate, ButtonToCreate->ButtonParams);
 	}
 
 	return ButtonToCreate;
 }
 
 void DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete)
-{
-	// Delete and free up memory from every object created with "new" related to button here 
+{	
+	if (!ButtonToDelete)
+	{
+		return;
+	}
+	
+	Engine->StoredButtonBitmapComponents.erase(std::remove(
+		Engine->StoredButtonBitmapComponents.begin(),
+		Engine->StoredButtonBitmapComponents.end(), ButtonToDelete->ButtonBitmap));
+
+	Engine->StoredButtonCollisionComponents.erase(std::remove(
+		Engine->StoredButtonCollisionComponents.begin(),
+		Engine->StoredButtonCollisionComponents.end(), ButtonToDelete->ButtonCollider));
+	
+	delete ButtonToDelete->ButtonBitmap;
+	delete ButtonToDelete->ButtonCollider;
+
+	while (!ButtonToDelete->ButtonText.empty())
+	{
+		for (int ButtonToDeleteIndex = 0; 
+			ButtonToDeleteIndex < ButtonToDelete->ButtonText.size(); 
+			ButtonToDeleteIndex++)
+		{
+			BitmapComponent* CurrentButtonText = 
+				ButtonToDelete->ButtonText[ButtonToDeleteIndex];
+
+			for (int EngineStoredButtonsIndex = 0;
+				EngineStoredButtonsIndex < Engine->StoredButtonTexts.size(); 
+				EngineStoredButtonsIndex++)
+			{
+				if (Engine->StoredButtonTexts[EngineStoredButtonsIndex] == 
+					CurrentButtonText)
+				{
+					BitmapComponent* TextToDelete =
+						Engine->StoredButtonTexts[EngineStoredButtonsIndex];
+
+					Engine->StoredButtonTexts.erase(std::remove(
+						Engine->StoredButtonTexts.begin(),
+						Engine->StoredButtonTexts.end(), TextToDelete));
+
+					ButtonToDelete->ButtonText.erase(std::remove(
+						ButtonToDelete->ButtonText.begin(),
+						ButtonToDelete->ButtonText.end(), CurrentButtonText));
+
+					delete TextToDelete;
+				}
+			}
+		}
+	}
+
+	delete ButtonToDelete;
 }
 
 void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
@@ -841,7 +900,7 @@ void RenderCollisionRectangle(ID2D1HwndRenderTarget* Renderer, CollisionComponen
 	Brush->Release();
 }
 
-void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
+void RenderCollisionRectangleMultiple(ID2D1HwndRenderTarget* Renderer,
 	std::vector<CollisionComponent*> CollisionRectsToRender)
 {
 	for (int i = 0; i < CollisionRectsToRender.size(); i++)
