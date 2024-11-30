@@ -77,7 +77,7 @@ void BroadcastInput(std::vector<InputCallback*> StoredCallbacks, int Input, bool
 {
 	for (int i = 0; i < StoredCallbacks.size(); i++)
 	{
-		StoredCallbacks[i]->BroadcastInput(Input, Pressed);
+		StoredCallbacks[i]->InputBroadcast(Input, Pressed);
 	}
 }
 
@@ -309,7 +309,9 @@ void ClearScreenPrint(VoodooEngine* Engine)
 
 Button* CreateButton(VoodooEngine* Engine, EButtonType ButtonType,
 	Button* ButtonToCreate, std::string ButtonName, int ButtonID,
-	SVector ButtonLocation, const wchar_t* AssetPath)
+	SVector ButtonLocation, const wchar_t* AssetPath, 
+	int ThumbnailSourceOffsetMultiplierWidth,
+	int ThumbnailSourceOffsetMultiplierHeight)
 {
 	// Create button class and setup button parameters
 	ButtonToCreate = new Button();
@@ -326,21 +328,47 @@ Button* CreateButton(VoodooEngine* Engine, EButtonType ButtonType,
 	ButtonToCreate->ButtonBitmap->BitmapParams = 
 		SetupBitmapParams(ButtonToCreate->ButtonBitmap->Bitmap);
 	ButtonToCreate->ButtonBitmap->ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;	
-	int BitmapWidth = 0;
-	if (ButtonToCreate->ButtonParams.ButtonType == TwoSided)
+	SVector BitmapVector2D = { 0, 0 };
+	switch (ButtonToCreate->ButtonParams.ButtonType)
 	{
-		BitmapWidth = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width / 2;
+	case OneSided:
+		BitmapVector2D.X = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width;
+		BitmapVector2D.Y = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().height;
+		SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
+		break;
+	case TwoSided:
+		BitmapVector2D.X = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width / 2;
+		BitmapVector2D.Y = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().height;
+		SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
+		break;
+	case AssetButtonThumbnail:
+		// As default the bitmap source gets set by the dimensions of the image file
+		// but for the image thumbnail we want to crop the image to fit the asset button
+		BitmapVector2D = Engine->AssetButtonThumbnailDimensions;
+		SetBitmapSourceLocationX(
+			ButtonToCreate->ButtonBitmap, BitmapVector2D.X, 
+			ThumbnailSourceOffsetMultiplierWidth);
+		SetBitmapSourceLocationY(
+			ButtonToCreate->ButtonBitmap, BitmapVector2D.Y, 
+			ThumbnailSourceOffsetMultiplierHeight);
+		break;
 	}
-	else
-	{
-		BitmapWidth = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width;
-	}
-	SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, BitmapWidth);
 	Engine->StoredButtonBitmapComponents.push_back(ButtonToCreate->ButtonBitmap);
+
+	// If asset button, create asset background bitmap
+	if (ButtonType == AssetButtonThumbnail)
+	{
+		BitmapComponent* AssetButtonBackgroundBitmap = new BitmapComponent();
+		AssetButtonBackgroundBitmap->Bitmap =
+			CreateNewBitmap(Engine->Renderer, L"EngineContent/LevelEditor/AssetButtonBase.png");
+		AssetButtonBackgroundBitmap->BitmapParams = SetupBitmapParams(AssetButtonBackgroundBitmap->Bitmap);
+		AssetButtonBackgroundBitmap->ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;
+		Engine->StoredButtonBitmapComponents.push_back(AssetButtonBackgroundBitmap);
+	}
 
 	// Create button collider
 	ButtonToCreate->ButtonCollider = new CollisionComponent();
-	ButtonToCreate->ButtonCollider->CollisionRect = ButtonToCreate->ButtonBitmap->BitmapParams.BitmapSource;
+	ButtonToCreate->ButtonCollider->CollisionRect = BitmapVector2D;
 	ButtonToCreate->ButtonCollider->ComponentLocation = ButtonToCreate->ButtonBitmap->ComponentLocation;
 	ButtonToCreate->ButtonCollider->CollisionTag = ButtonToCreate->ButtonParams.ButtonCollisionTag;
 	// Only render collision rect if in debug mode
@@ -511,9 +539,20 @@ bool HideSystemMouseCursor(UINT Message, LPARAM LParam)
 
 void Update(VoodooEngine* Engine, float DeltaTime)
 {
-	for (int i = 0; i < Engine->StoredUpdateComponents.size(); i++)
+	if (Engine->EditorMode)
 	{
-		Engine->StoredUpdateComponents[i]->Update(DeltaTime);
+		for (int i = 0; i < Engine->StoredEditorUpdateComponents.size(); i++)
+		{
+			Engine->StoredEditorUpdateComponents[i]->Update(DeltaTime);
+		}
+	}
+
+	if (Engine->GameRunning)
+	{
+		for (int i = 0; i < Engine->StoredUpdateComponents.size(); i++)
+		{
+			Engine->StoredUpdateComponents[i]->Update(DeltaTime);
+		}
 	}
 }
 
@@ -647,6 +686,17 @@ void SetBitmapSourceLocationX(
 	BitmapToUpdate->BitmapParams.BitmapOffsetRight.X = BitmapSourceWidth;
 }
 
+void SetBitmapSourceLocationY(
+	BitmapComponent* BitmapToUpdate, int BitmapSourceHeight, int BitmapOffsetMultiplier)
+{
+	BitmapToUpdate->BitmapParams.BitmapSource.Y = BitmapSourceHeight * BitmapOffsetMultiplier;
+
+	BitmapToUpdate->BitmapParams.BitmapOffsetLeft.Y =
+		BitmapToUpdate->BitmapParams.BitmapSource.Y - BitmapSourceHeight;
+
+	BitmapToUpdate->BitmapParams.BitmapOffsetRight.Y = BitmapSourceHeight;
+}
+
 void UpdateAnimationState(AnimationParameters &AnimationParams,
 	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight)
 {
@@ -693,6 +743,12 @@ void UpdateAnimation(AnimationParameters &AnimationParams,
 			AnimationParams.CurrentFrame += 1;
 		}
 	}
+}
+
+void InitializeAnimationFirstFrame(AnimationParameters &AnimationParams, 
+	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight)
+{
+	UpdateAnimation(AnimationParams, BitmapSource, BitmapOffsetLeft, BitmapOffsetRight, 1);
 }
 
 void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer, 
@@ -963,7 +1019,7 @@ SVector GetComponentRelativeLocation(
 	return CurrentComponentLocation;
 }
 
-bool UpdateDebugMode()
+bool SetDebugMode()
 {
 	bool NewDebugMode = false;
 	std::fstream File("EngineConfig.txt");
@@ -987,7 +1043,7 @@ bool UpdateDebugMode()
 	return NewDebugMode;
 }
 
-bool UpdateEditorMode()
+bool SetEditorMode()
 {
 	bool NewEditorMode = false;
 	std::fstream File("EngineConfig.txt");
@@ -1009,4 +1065,41 @@ bool UpdateEditorMode()
 	File.close();
 
 	return NewEditorMode;
+}
+
+void LoadGameObjectsFromFile(
+	const wchar_t* FileName, VoodooEngine* Engine, void(*LoadObjectFromGameID)(int, SVector, bool))
+{
+	std::fstream File(FileName);
+	if (File.is_open())
+	{
+		int GameObjectID = 0;
+		SVector SpawnLocation = {};
+		bool CreateCollision = false;
+
+		std::string VerticalLine;
+		while (getline(File, VerticalLine))
+		{
+			std::stringstream Stream(VerticalLine);
+			std::string HorizontalLine;
+			std::vector<std::string> HorizontalLineNum;
+			while (Stream >> HorizontalLine)
+			{
+				HorizontalLineNum.push_back(HorizontalLine);
+			}
+
+			GameObjectID = (std::stoi(HorizontalLineNum[0]));
+			SpawnLocation.X = (std::stof(HorizontalLineNum[1]));
+			SpawnLocation.Y = (std::stof(HorizontalLineNum[2]));
+			// Check if current object wants to have collision created
+			if (HorizontalLineNum[3] == "true")
+			{
+				CreateCollision = true;
+			}
+			
+			LoadObjectFromGameID(GameObjectID, SpawnLocation, CreateCollision);
+		}
+	}
+
+	File.close();
 }

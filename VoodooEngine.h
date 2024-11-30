@@ -55,7 +55,7 @@ extern "C" VOODOOENGINE_API void UpdateAppWindow();
 class InputCallback
 {
 public:
-	virtual void BroadcastInput(int Input, bool Pressed){};
+	virtual void InputBroadcast(int Input, bool Pressed) = 0;
 };
 // Check if input is being pressed/released, returns a bool and is false as default if no input is found
 extern "C" VOODOOENGINE_API bool InputPressed(std::map<int, bool> StoredInputs, int InputToCheck);
@@ -114,9 +114,12 @@ extern "C" VOODOOENGINE_API ID2D1Bitmap* CreateNewBitmap(
 	ID2D1HwndRenderTarget* RenderTarget, const wchar_t* FileName, bool Flip = false);
 // Setup bitmap struct
 extern "C" VOODOOENGINE_API SBitmap SetupBitmapParams(ID2D1Bitmap* CreatedBitmap);
-// Offset bitmap
+// Offset bitmap source X axis
 extern "C" VOODOOENGINE_API void SetBitmapSourceLocationX(
 	BitmapComponent* BitmapToUpdate, int BitmapSourceWidth, int LocationOffsetMultiplier = 1);
+// Offset bitmap source Y axis
+extern "C" VOODOOENGINE_API void SetBitmapSourceLocationY(
+	BitmapComponent* BitmapToUpdate, int BitmapSourceHeight, int LocationOffsetMultiplier = 1);
 //-------------------------------------------
 
 // Animation
@@ -152,6 +155,11 @@ extern "C" VOODOOENGINE_API void UpdateAnimation(
 	SVector &BitmapOffsetLeft,
 	SVector &BitmapOffsetRight,
 	float DeltaTime);
+// Setup the first frame of animation 
+// (used for when an object is created before activation of update component, 
+// to make sure animation spritesheet bitmap gets framed with the first animation frame)
+extern "C" VOODOOENGINE_API void InitializeAnimationFirstFrame(AnimationParameters& AnimationParams,
+	SVector& BitmapSource, SVector& BitmapOffsetLeft, SVector& BitmapOffsetRight);
 //-------------------------------------------
 
 // Object
@@ -234,13 +242,14 @@ public:
 };
 //-------------------------------------------
 
-// Voodoo engine
-//-------------------------------------------
 // Button
+//-------------------------------------------
+// Button parameters
 enum EButtonType
 {
 	TwoSided,
-	OneSided
+	OneSided,
+	AssetButtonThumbnail
 };
 struct ButtonParameters
 {
@@ -251,6 +260,7 @@ struct ButtonParameters
 	SVector ButtonTextOffset = { -2, 10 };
 	SVector ButtonLocation = { 0, 0 };
 };
+// Generic button class (can be used for game UI)
 class Button
 {
 public:
@@ -259,22 +269,38 @@ public:
 	ButtonParameters ButtonParams = {};
 	std::vector<BitmapComponent*> ButtonText;
 };
-// Level Assets
+// Asset button struct (used by level editor)
 struct SAssetButton
 {
 	Button* AssetButton = nullptr;
 	int AssetID = 0;
 	const wchar_t* AssetPath = L"";
+	int AssetButtonThumbnailSourceOffsetMultiplierWidth = 1;
+	int AssetButtonThumbnailSourceOffsetMultiplierHeight = 1;
 
-	bool operator==(const SAssetButton& Other) const 
+	bool operator==(const SAssetButton &Other) const 
 	{
 		return (AssetButton == Other.AssetButton);
 	}
 };
+//-------------------------------------------
+
+// GameState callback
+//-------------------------------------------
+// Sends broadcast to connected objects when game has started/ended
+class GameStateCallback
+{
+public:
+	// Optional to setup for each game object
+	virtual void OnGameStart(){};
+	virtual void OnGameEnd(){};
+};
+//-------------------------------------------
+
 // Game object 
 //-------------------------------------------
 // This class is used for all objects placed in levels
-class GameObject : public Object, public BitmapComponent, public CollisionComponent
+class GameObject : public Object, public BitmapComponent, public CollisionComponent, public GameStateCallback
 {
 public:
 	// Default constructor
@@ -290,8 +316,12 @@ public:
 	// Optional, can be set to not be created
 	CollisionComponent* AssetCollision = nullptr;
 	bool CreateDefaultAssetCollisionInGame = false;
+
+	// Called when the game object has been setup with all the assetID/bitmap/collision parameters
+	virtual void OnGameObjectSetupCompleted(){};
 };
 //-------------------------------------------
+
 // Engine class
 class VoodooEngine
 {
@@ -300,6 +330,7 @@ public:
 	bool DebugMode = false;
 	bool EditorMode = false;
 	bool EngineRunning = false;
+	bool GameRunning = false;
 	SWindowParams Window;
 	ID2D1HwndRenderTarget* Renderer = nullptr;
 	LARGE_INTEGER StartCounter;
@@ -307,16 +338,16 @@ public:
 	LARGE_INTEGER Counts;
 	LARGE_INTEGER Frequency;
 	LARGE_INTEGER FPS;
-	float TargetSecondsPerFrame = 1 / 80;
+	float TargetSecondsPerFrame = 1 / 100;
 	float DeltaTime = 0;
 	std::vector<UpdateComponent*> StoredUpdateComponents;
 	std::vector<CollisionComponent*> StoredCollisionComponents;
 	std::vector<BitmapComponent*> StoredBitmapComponents;
 	std::map<int, bool> StoredInputs;
 	std::vector<InputCallback*> StoredInputCallbacks;
+	std::vector<GameStateCallback*> StoredGameStateCallbacks;
 	std::vector<GameObject*> StoredGameObjects;
 	std::map<int, const wchar_t*> StoredGameObjectIDs;
-	std::vector<SAssetButton> StoredButtonAssets;
 
 	// Font asset paths
 	const wchar_t* DefaultFont = L"EngineContent/Font/FontMonogram.png";
@@ -335,7 +366,10 @@ public:
 	SColor EditorCollisionRectColor = { 200, 0, 255 };
 
 	// Only used in editor mode
+	SVector AssetButtonThumbnailDimensions = { 90, 90 };
+	std::vector<UpdateComponent*> StoredEditorUpdateComponents;
 	std::vector<BitmapComponent*> StoredEditorBitmapComponents;
+	std::vector<SAssetButton> StoredButtonAssets;
 	// Used only for screen debug print
 	std::vector<BitmapComponent*> StoredScreenPrintTexts;
 	// This keeps track of the number of console text prints have been printed
@@ -343,10 +377,28 @@ public:
 	// Will reset once console window is deleted
 	int ScreenPrintTextColumnsPrinted = 0;
 
+	void StartGame()
+	{
+		GameRunning = true;
+		for (int i = 0; i < StoredGameObjects.size(); i++)
+		{
+			StoredGameObjects[i]->OnGameStart();
+		}
+	}
+	void EndGame()
+	{
+		GameRunning = false;
+		for (int i = 0; i < StoredGameObjects.size(); i++)
+		{
+			StoredGameObjects[i]->OnGameEnd();
+		}
+	}
+
 	template<class T>
 	T* CreateGameObject(
 		T* ClassToSpawn, SVector SpawnLocation, int AssetID, bool CreateAssetCollision = false)
 	{
+		// If object id is not found, then invalidate object and return nullptr
 		auto Iterator = StoredGameObjectIDs.find(AssetID);
 		if (Iterator == StoredGameObjectIDs.end())
 		{
@@ -387,6 +439,7 @@ public:
 			StoredCollisionComponents.push_back(ClassToSpawn->AssetCollision);
 		}
 		StoredGameObjects.push_back(ClassToSpawn);
+		ClassToSpawn->OnGameObjectSetupCompleted();
 
 		return ClassToSpawn;
 	};
@@ -402,7 +455,9 @@ extern "C" VOODOOENGINE_API void RenderCustomMouseCursor(
 
 extern "C" VOODOOENGINE_API Button* CreateButton(VoodooEngine* Engine, 
 	EButtonType ButtonType, Button* ButtonToCreate, std::string ButtonName, int ButtonID,
-	SVector ButtonLocation, const wchar_t* AssetPath);
+	SVector ButtonLocation, const wchar_t* AssetPath, 
+	int ThumbnailSourceOffsetMultiplierWidth = 1,
+	int ThumbnailSourceOffsetMultiplierHeight = 1);
 extern "C" VOODOOENGINE_API void DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete);
 //-------------------------------------------
 
@@ -472,8 +527,8 @@ public:
 	{
 		Engine = EngineReference;
 
-		// Add level editor to the list of objects that calls update function every frame
-		Engine->StoredUpdateComponents.push_back(this);
+		// Add level editor update function to be called every frame
+		Engine->StoredEditorUpdateComponents.push_back(this);
 
 		// Add input callback for level editor
 		Engine->StoredInputCallbacks.push_back(this);
@@ -561,10 +616,12 @@ public:
 			}
 
 			Button* AssetButton = nullptr;
-			AssetButton = CreateButton(Engine, OneSided, AssetButton, "", CurrentAssetID,
+			AssetButton = CreateButton(Engine, AssetButtonThumbnail, AssetButton, "", CurrentAssetID,
 				{ ASSET_SELECTION_BUTTON_LOC_X_ORIGIN + LocXOffset, 
 				(ASSET_SELECTION_BUTTON_LOC_Y_ORIGIN + LocYOffset) },
-				CurrentStoredButtonAssets[i].AssetPath);
+				CurrentStoredButtonAssets[i].AssetPath, 
+				CurrentStoredButtonAssets[i].AssetButtonThumbnailSourceOffsetMultiplierWidth,
+				CurrentStoredButtonAssets[i].AssetButtonThumbnailSourceOffsetMultiplierHeight);
 				
 			CurrentStoredButtonAssets[i].AssetButton = AssetButton;
 			LocYOffset += OffsetYAmount;
@@ -665,10 +722,12 @@ public:
 		case BUTTON_ID_PLAYLEVEL:
 			DeletePlayLevelButton();
 			CreateStopPlayButton();
+			Engine->StartGame();
 			break;
 		case BUTTON_ID_STOPPLAY:
 			DeleteStopPlayButton();
 			CreatePlayLevelButton();
+			Engine->EndGame();
 			break;
 		case BUTTON_ID_SELECT_ASSET_LIST_PREVIOUS:
 			SetButtonBitmapSourceClicked(PreviousButton);
@@ -684,17 +743,17 @@ public:
 		// THIS WAY ALL THE LOGIC CAN BE CUSTOMIZED PER GAME 
 		// E.G. SPAWNING SPECIFIC GAME ASSETS WHEN CLICKING ON AN ASSET BUTTON, SAVING A SPECIFIC LEVEL)
 		case 50:
-			ScreenPrint("pressed_red_baby", Engine);
+			//ScreenPrint("pressed_red_baby", Engine);
 			break;
 		case 51:
-			ScreenPrint("pressed_blue_baby", Engine);
+			//ScreenPrint("pressed_blue_baby", Engine);
 			break;
 		case 52:
-			ScreenPrint("pressed_green_baby", Engine);
+			//ScreenPrint("pressed_green_baby", Engine);
 			break;
 		}
 	};
-	void BroadcastInput(int Input, bool Pressed)
+	void InputBroadcast(int Input, bool Pressed)
 	{
 		ResetButtonsBitmapSource(PlayLevelButton);
 		ResetButtonsBitmapSource(PreviousButton);
@@ -755,7 +814,7 @@ public:
 	{
 		ButtonID = SenderCollisionTag;
 
-		ScreenPrint("collision_detected", Engine);
+		//ScreenPrint("collision_detected", Engine);
 	};
 	void OnEndOverlap(int SenderCollisionTag, int TargetCollisionTag)
 	{
@@ -875,8 +934,9 @@ extern "C" VOODOOENGINE_API float UpdateFrameRate(VoodooEngine* Engine);
 // File I/O
 //-------------------------------------------
 // Read only
-extern "C" VOODOOENGINE_API bool UpdateDebugMode();
-extern "C" VOODOOENGINE_API bool UpdateEditorMode();
-// Read/Write (saving)
-// Add functions here
+extern "C" VOODOOENGINE_API bool SetDebugMode();
+extern "C" VOODOOENGINE_API bool SetEditorMode();
+// Read/Write (saving/loading)
+extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(
+	const wchar_t* FileName, VoodooEngine* Engine, void(*LoadObjectFromGameID)(int, SVector, bool));
 //-------------------------------------------
