@@ -2,7 +2,6 @@
 #include "VoodooEngine.h"
 #include <fstream>
 #include <sstream>
-#include <string>
 
 void CreateAppWindow(SWindowParams &WindowParams, WNDPROC InputCallbackFunction)
 {
@@ -81,6 +80,48 @@ void BroadcastInput(std::vector<InputCallback*> StoredCallbacks, int Input, bool
 	}
 }
 
+void SendMouseInputBroadcast(VoodooEngine* Engine, int Input, bool Pressed)
+{
+	for (int i = 0; i < Engine->StoredInputCallbacks.size(); i++)
+	{
+		// Override input and pressed type
+		Engine->StoredInputCallbacks[i]->InputBroadcast(Input, Pressed);
+	}
+}
+
+void UpdateMouseInput(VoodooEngine* Engine, UINT Message)
+{
+	if (!Engine)
+	{
+		return;
+	}
+
+	// 1 == Primary mouse input ID
+	// 2 == Secondary mouse input ID
+
+	switch (Message)
+	{
+	// Primary mouse button
+	case WM_LBUTTONDOWN:
+		Engine->Mouse.PrimaryMousePressed = true;
+		SendMouseInputBroadcast(Engine, 1, true);
+		break;
+	case WM_LBUTTONUP:
+		Engine->Mouse.PrimaryMousePressed = false;
+		SendMouseInputBroadcast(Engine, 1, false);
+		break;
+	// Secondary mouse button
+	case WM_RBUTTONDOWN:
+		Engine->Mouse.SecondaryMousePressed = true;
+		SendMouseInputBroadcast(Engine, 2, true);
+		break;
+	case WM_RBUTTONUP:
+		Engine->Mouse.SecondaryMousePressed = false;
+		SendMouseInputBroadcast(Engine, 2, false);
+		break;
+	}
+}
+
 float GetSecondsPerFrame(
 	LARGE_INTEGER* StartCounter, LARGE_INTEGER* EndCounter, LARGE_INTEGER* Frequency)
 {
@@ -122,18 +163,32 @@ float UpdateFrameRate(VoodooEngine* Engine)
 	return SecondsPerFrame;
 }
 
-void DeleteBitmapComponent(VoodooEngine* Engine, BitmapComponent* Component)
+void RemoveBitmapComponent(BitmapComponent* Component, VoodooEngine* Engine)
 {
 	Engine->StoredBitmapComponents.erase(std::remove(
 		Engine->StoredBitmapComponents.begin(),
 		Engine->StoredBitmapComponents.end(), Component));
 }
 
-void DeleteCollisionComponent(VoodooEngine* Engine, CollisionComponent* Component)
+void RemoveCollisionComponent(CollisionComponent* Component, VoodooEngine* Engine)
 {
 	Engine->StoredCollisionComponents.erase(std::remove(
 		Engine->StoredCollisionComponents.begin(),
 		Engine->StoredCollisionComponents.end(), Component));
+}
+
+void RemoveUpdateComponent(UpdateComponent* Component, VoodooEngine* Engine)
+{
+	Engine->StoredUpdateComponents.erase(std::remove(
+		Engine->StoredUpdateComponents.begin(),
+		Engine->StoredUpdateComponents.end(), Component));
+}
+
+void RemoveInputCallback(InputCallback* Component, VoodooEngine* Engine)
+{
+	Engine->StoredInputCallbacks.erase(std::remove(
+		Engine->StoredInputCallbacks.begin(),
+		Engine->StoredInputCallbacks.end(), Component));
 }
 
 void CloseApp(VoodooEngine* Engine)
@@ -226,7 +281,7 @@ BitmapComponent* CreateLetter(
 	SVector LetterLocation, const wchar_t* Font)
 {
 	BitmapComponent* CreatedLetter = new BitmapComponent();
-	CreatedLetter->Bitmap = CreateNewBitmap(Engine->Renderer, Font);
+	CreatedLetter->Bitmap = SetBitmap(Engine->Renderer, Font);
 	CreatedLetter->BitmapParams = SetupBitmapParams(CreatedLetter->Bitmap);
 	CreatedLetter->ComponentLocation = LetterLocation;
 	AssignLetterShiftByID(LetterString, CreatedLetter, Engine);
@@ -234,8 +289,10 @@ BitmapComponent* CreateLetter(
 	return CreatedLetter;
 }
 
-void CreateText(VoodooEngine* Engine, Button* ButtonReference, ButtonParameters ButtonParams)
+void CreateText(VoodooEngine* Engine, Button* ButtonReference, SButtonParameters ButtonParams)
 {
+	SEditorAssetList FontAssetPath;
+
 	SVector LetterLocation = ButtonParams.ButtonLocation;
 	LetterLocation.Y = ButtonParams.ButtonLocation.Y + ButtonParams.ButtonTextOffset.Y;
 	float LetterOffsetX = LetterLocation.X + ButtonParams.ButtonTextOffset.X;
@@ -252,7 +309,7 @@ void CreateText(VoodooEngine* Engine, Button* ButtonReference, ButtonParameters 
 		{
 			BitmapComponent* NewLetter = 
 				CreateLetter(Engine, ButtonParams.ButtonTextString.substr(i, 1),
-				LetterLocation, Engine->DefaultFont);
+				LetterLocation, FontAssetPath.DefaultFont);
 
 			ButtonReference->ButtonText.push_back(NewLetter);
 			Engine->StoredButtonTexts.push_back(NewLetter);
@@ -262,6 +319,8 @@ void CreateText(VoodooEngine* Engine, Button* ButtonReference, ButtonParameters 
 
 void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 {
+	SEditorAssetList FontAssetPath;
+
 	float OriginPositionY = 100;
 	SVector LetterLocation = { 0, OriginPositionY };
 	float LetterOffsetX = LetterLocation.X;
@@ -280,7 +339,7 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 		if (DebugText.substr(i, 1) != "_")
 		{
 			BitmapComponent* NewLetter = CreateLetter(Engine, DebugText.substr(i, 1),
-				LetterLocation, Engine->DebugFont);
+				LetterLocation, FontAssetPath.DebugFont);
 
 			Engine->StoredScreenPrintTexts.push_back(NewLetter);
 		}
@@ -324,7 +383,7 @@ Button* CreateButton(VoodooEngine* Engine, EButtonType ButtonType,
 	// Create button bitmap and setup bitmap parameters
 	ButtonToCreate->ButtonBitmap = new BitmapComponent();
 	ButtonToCreate->ButtonBitmap->Bitmap = 
-		CreateNewBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
+		SetBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
 	ButtonToCreate->ButtonBitmap->BitmapParams = 
 		SetupBitmapParams(ButtonToCreate->ButtonBitmap->Bitmap);
 	ButtonToCreate->ButtonBitmap->ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;	
@@ -360,7 +419,7 @@ Button* CreateButton(VoodooEngine* Engine, EButtonType ButtonType,
 	{
 		BitmapComponent* AssetButtonBackgroundBitmap = new BitmapComponent();
 		AssetButtonBackgroundBitmap->Bitmap =
-			CreateNewBitmap(Engine->Renderer, L"EngineContent/LevelEditor/AssetButtonBase.png");
+			SetBitmap(Engine->Renderer, L"EngineContent/LevelEditor/AssetButtonBase.png");
 		AssetButtonBackgroundBitmap->BitmapParams = SetupBitmapParams(AssetButtonBackgroundBitmap->Bitmap);
 		AssetButtonBackgroundBitmap->ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;
 		Engine->StoredButtonBitmapComponents.push_back(AssetButtonBackgroundBitmap);
@@ -377,7 +436,7 @@ Button* CreateButton(VoodooEngine* Engine, EButtonType ButtonType,
 		ButtonToCreate->ButtonCollider->CollisionRectColor = Engine->EditorCollisionRectColor;
 		ButtonToCreate->ButtonCollider->RenderCollisionRect = true;
 	}
-	Engine->StoredButtonCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
+	Engine->StoredEditorCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
 	
 	// Create text for button if button desired text is not empty
 	if (ButtonToCreate->ButtonParams.ButtonTextString != "")
@@ -399,9 +458,9 @@ void DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete)
 		Engine->StoredButtonBitmapComponents.begin(),
 		Engine->StoredButtonBitmapComponents.end(), ButtonToDelete->ButtonBitmap));
 
-	Engine->StoredButtonCollisionComponents.erase(std::remove(
-		Engine->StoredButtonCollisionComponents.begin(),
-		Engine->StoredButtonCollisionComponents.end(), ButtonToDelete->ButtonCollider));
+	Engine->StoredEditorCollisionComponents.erase(std::remove(
+		Engine->StoredEditorCollisionComponents.begin(),
+		Engine->StoredEditorCollisionComponents.end(), ButtonToDelete->ButtonCollider));
 	
 	delete ButtonToDelete->ButtonBitmap;
 	delete ButtonToDelete->ButtonCollider;
@@ -447,10 +506,10 @@ void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
 	// Add mouse collider used for detecting mouse "hover" (is invisible as default, when not in debug mode)
 	Engine->Mouse.MouseCollider = new CollisionComponent();
 	SetMouseColliderSize(Engine, MouseColliderSize);
-	Engine->StoredCollisionComponents.push_back(Engine->Mouse.MouseCollider);
+	Engine->StoredEditorCollisionComponents.push_back(Engine->Mouse.MouseCollider);
 
 	Engine->Mouse.MouseBitmap = new BitmapComponent();
-	Engine->Mouse.MouseBitmap->Bitmap = CreateNewBitmap(
+	Engine->Mouse.MouseBitmap->Bitmap = SetBitmap(
 		Engine->Renderer, L"EngineContent/Cursor/CustomMouseCursor.png");
 
 	// Setup custom mouse cursor bitmap if found, otherwise render mouse collider instead
@@ -479,7 +538,7 @@ void DeleteMouse(VoodooEngine* Engine)
 
 	if (Engine->Mouse.MouseCollider)
 	{
-		DeleteCollisionComponent(Engine, Engine->Mouse.MouseCollider);
+		RemoveCollisionComponent(Engine->Mouse.MouseCollider, Engine);
 		delete Engine->Mouse.MouseCollider;
 		Engine->Mouse.MouseCollider = nullptr;
 	}
@@ -574,7 +633,7 @@ ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* RenderTarget, HWND H
 	return RenderTarget;
 }
 
-ID2D1Bitmap* CreateNewBitmap(ID2D1HwndRenderTarget* RenderTarget, 
+ID2D1Bitmap* SetBitmap(ID2D1HwndRenderTarget* RenderTarget, 
 	const wchar_t* FileName, bool Flip)
 {
 	ID2D1Bitmap* NewBitmap = nullptr;
@@ -659,9 +718,9 @@ ID2D1Bitmap* CreateNewBitmap(ID2D1HwndRenderTarget* RenderTarget,
 	return NewBitmap;
 }
 
-SBitmap SetupBitmapParams(ID2D1Bitmap* BitmapToSetup)
+SBitmapParameters SetupBitmapParams(ID2D1Bitmap* BitmapToSetup)
 {
-	SBitmap BitmapSetup = {};
+	SBitmapParameters BitmapSetup = {};
 
 	// Set the bitmap source the same size as the loaded image (created bitmap)
 	BitmapSetup.BitmapSource.X = BitmapToSetup->GetSize().width;
@@ -697,7 +756,7 @@ void SetBitmapSourceLocationY(
 	BitmapToUpdate->BitmapParams.BitmapOffsetRight.Y = BitmapSourceHeight;
 }
 
-void UpdateAnimationState(AnimationParameters &AnimationParams,
+void SetAnimationState(SAnimationParameters &AnimationParams,
 	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight)
 {
 	// Goes from top to bottom in a spritesheet depending on desired animation state
@@ -708,10 +767,10 @@ void UpdateAnimationState(AnimationParameters &AnimationParams,
 	BitmapOffsetRight.Y = AnimationParams.FrameHeight;
 }
 
-void UpdateAnimation(AnimationParameters &AnimationParams,
+void UpdateAnimation(SAnimationParameters &AnimationParams,
 	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight, float DeltaTime)
 {
-	UpdateAnimationState(AnimationParams, BitmapSource, BitmapOffsetLeft, BitmapOffsetRight);
+	SetAnimationState(AnimationParams, BitmapSource, BitmapOffsetLeft, BitmapOffsetRight);
 
 	// Default to first frame
 	int CurrentFrameLocation = AnimationParams.FrameWidth;
@@ -745,7 +804,7 @@ void UpdateAnimation(AnimationParameters &AnimationParams,
 	}
 }
 
-void InitializeAnimationFirstFrame(AnimationParameters &AnimationParams, 
+void InitializeAnimationFirstFrame(SAnimationParameters &AnimationParams, 
 	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight)
 {
 	UpdateAnimation(AnimationParams, BitmapSource, BitmapOffsetLeft, BitmapOffsetRight, 1);
@@ -837,6 +896,12 @@ void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engi
 
 bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
 {
+	if (Sender->NoCollision || 
+		Target->NoCollision)
+	{
+		return false;
+	}
+
 	if (Sender->ComponentLocation.X < Target->ComponentLocation.X + Target->CollisionRect.X &&
 		Target->ComponentLocation.X < Sender->ComponentLocation.X + Sender->CollisionRect.X &&
 		Sender->ComponentLocation.Y < Target->ComponentLocation.Y + Target->CollisionRect.Y &&
@@ -848,7 +913,7 @@ bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
 	return false;
 }
 
-void CheckForCollision(Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target)
+void BroadcastCollision(Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target)
 {
 	if (!Sender)
 		return;
@@ -878,7 +943,7 @@ void CheckForCollision(Object* CallbackOwner, CollisionComponent* Sender, Collis
 			!Sender->IsOverlapped)
 		{
 			Sender->IsOverlapped = true;
-			CallbackOwner->OnBeginOverlap(Sender->CollisionTag, Target->CollisionTag);
+			CallbackOwner->OnBeginOverlap(Sender->CollisionTag, Target->CollisionTag, Target->Owner);
 		}
 	}
 	else if (!Ignore && 
@@ -889,56 +954,13 @@ void CheckForCollision(Object* CallbackOwner, CollisionComponent* Sender, Collis
 	}
 }
 
-void CheckForCollisionMultiple(Object* CallbackOwner, CollisionComponent* Sender, std::vector<CollisionComponent*> Targets)
-{
-	if (!Sender)
-		return;
-
-	if (Sender->NoCollision)
-		return;
-
-	for (int i = 0; i < Targets.size(); i++)
-	{
-		if (!Targets[i])
-			return;
-
-		if (Targets[i]->NoCollision)
-			continue;
-
-		bool Ignore = false;
-		if (IsCollisionDetected(Sender, Targets[i]))
-		{
-			for (int j = 0; j < Sender->CollisionTagsToIgnore.size(); j++)
-			{
-				if (Targets[i]->CollisionTag == Sender->CollisionTagsToIgnore[j])
-				{
-					Ignore = true;
-					break;
-				}
-			}
-
-			if (!Ignore &&
-				!Sender->IsOverlapped)
-			{
-				Sender->IsOverlapped = true;
-				CallbackOwner->OnBeginOverlap(Sender->CollisionTag, Targets[i]->CollisionTag);
-			}
-		}
-		else if (!Ignore &&
-			Sender->IsOverlapped)
-		{
-			Sender->IsOverlapped = false;
-			CallbackOwner->OnEndOverlap(Sender->CollisionTag, Targets[i]->CollisionTag);
-		}
-	}
-}
-
 void RenderCollisionRectangle(ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectangleToRender)
 {
+	int Alpha = 255;
 	const D2D1_COLOR_F Color =
 	{CollisionRectangleToRender->CollisionRectColor.R,
 	CollisionRectangleToRender->CollisionRectColor.G,
-	CollisionRectangleToRender->CollisionRectColor.B, 255};
+	CollisionRectangleToRender->CollisionRectColor.B, Alpha};
 
 	ID2D1SolidColorBrush* Brush;
 	Renderer->CreateSolidColorBrush(Color, &Brush);
@@ -969,10 +991,11 @@ void RenderCollisionRectangleMultiple(ID2D1HwndRenderTarget* Renderer,
 		if (!CollisionRectsToRender[i]->RenderCollisionRect)
 			continue;
 
+		int Alpha = 255;
 		const D2D1_COLOR_F Color = 
 			{CollisionRectsToRender[i]->CollisionRectColor.R,
 			CollisionRectsToRender[i]->CollisionRectColor.G,
-			CollisionRectsToRender[i]->CollisionRectColor.B, 255};
+			CollisionRectsToRender[i]->CollisionRectColor.B, Alpha};
 
 		ID2D1SolidColorBrush* Brush;
 		Renderer->CreateSolidColorBrush(Color, &Brush);
