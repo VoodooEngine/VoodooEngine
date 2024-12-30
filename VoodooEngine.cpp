@@ -366,77 +366,77 @@ void ClearScreenPrint(VoodooEngine* Engine)
 	Engine->ScreenPrintTextColumnsPrinted = 0;
 }
 
-Button* CreateButton(VoodooEngine* Engine, EButtonType ButtonType,
-	Button* ButtonToCreate, std::string ButtonName, int ButtonID,
-	SVector ButtonLocation, const wchar_t* AssetPath, 
-	int ThumbnailSourceOffsetMultiplierWidth,
-	int ThumbnailSourceOffsetMultiplierHeight)
+Button* CreateButton(
+	VoodooEngine* Engine,
+	Button* ButtonToCreate,
+	int ButtonID,
+	EButtonType ButtonType,
+	std::string ButtonText,
+	SVector ButtonLocation, const wchar_t* AssetPath)
 {
 	// Create button class and setup button parameters
 	ButtonToCreate = new Button();
-	ButtonToCreate->ButtonParams.ButtonType = ButtonType;
-	ButtonToCreate->ButtonParams.AssetPathButtonBitmap = AssetPath;
-	ButtonToCreate->ButtonParams.ButtonLocation = ButtonLocation;
 	ButtonToCreate->ButtonParams.ButtonCollisionTag = ButtonID;
-	ButtonToCreate->ButtonParams.ButtonTextString = ButtonName;
+	ButtonToCreate->ButtonParams.ButtonType = ButtonType;
+	ButtonToCreate->ButtonParams.ButtonTextString = ButtonText;
+	ButtonToCreate->ButtonParams.ButtonLocation = ButtonLocation;
+	ButtonToCreate->ButtonParams.AssetPathButtonBitmap = AssetPath;
 
 	// Create button bitmap and setup bitmap parameters
-	ButtonToCreate->ButtonBitmap = new BitmapComponent();
-	ButtonToCreate->ButtonBitmap->Bitmap = 
+	ButtonToCreate->ButtonBitmap.Bitmap = 
 		SetBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
-	ButtonToCreate->ButtonBitmap->BitmapParams = 
-		SetupBitmapParams(ButtonToCreate->ButtonBitmap->Bitmap);
-	ButtonToCreate->ButtonBitmap->ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;	
+	ButtonToCreate->ButtonBitmap.BitmapParams = SetupBitmapParams(ButtonToCreate->ButtonBitmap.Bitmap);
+	ButtonToCreate->ButtonBitmap.ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;	
+
+	// Setup bitmap source based on button type
 	SVector BitmapVector2D = { 0, 0 };
 	switch (ButtonToCreate->ButtonParams.ButtonType)
 	{
 	case OneSided:
-		BitmapVector2D.X = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width;
-		BitmapVector2D.Y = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().height;
-		SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
+		BitmapVector2D.X = ButtonToCreate->ButtonBitmap.Bitmap->GetSize().width;
+		BitmapVector2D.Y = ButtonToCreate->ButtonBitmap.Bitmap->GetSize().height;
+		SetBitmapSourceLocationX(&ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
 		break;
 	case TwoSided:
-		BitmapVector2D.X = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().width / 2;
-		BitmapVector2D.Y = ButtonToCreate->ButtonBitmap->Bitmap->GetSize().height;
-		SetBitmapSourceLocationX(ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
+		BitmapVector2D.X = ButtonToCreate->ButtonBitmap.Bitmap->GetSize().width / 2;
+		BitmapVector2D.Y = ButtonToCreate->ButtonBitmap.Bitmap->GetSize().height;
+		SetBitmapSourceLocationX(&ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
 		break;
 	case AssetButtonThumbnail:
-		// As default the bitmap source gets set by the dimensions of the image file
-		// but for the image thumbnail we want to crop the image to fit the asset button
+		// By default the bitmap source gets set by the dimensions of the bitmap
+		// but for the level editor asset thumbnail we want to crop the image to fit the asset button
 		BitmapVector2D = Engine->AssetButtonThumbnailDimensions;
 		SetBitmapSourceLocationX(
-			ButtonToCreate->ButtonBitmap, BitmapVector2D.X, 
-			ThumbnailSourceOffsetMultiplierWidth);
+			&ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
 		SetBitmapSourceLocationY(
-			ButtonToCreate->ButtonBitmap, BitmapVector2D.Y, 
-			ThumbnailSourceOffsetMultiplierHeight);
+			&ButtonToCreate->ButtonBitmap, BitmapVector2D.Y);
 		break;
 	}
-	Engine->StoredButtonBitmapComponents.push_back(ButtonToCreate->ButtonBitmap);
+	Engine->StoredButtonBitmapComponents.push_back(&ButtonToCreate->ButtonBitmap);
 
-	// If asset button, create asset background bitmap
+	// If asset button type, create asset background bitmap
 	if (ButtonType == AssetButtonThumbnail)
 	{
-		BitmapComponent* AssetButtonBackgroundBitmap = new BitmapComponent();
-		AssetButtonBackgroundBitmap->Bitmap =
+		ButtonToCreate->AdditionalBackgroundBitmap.Bitmap =
 			SetBitmap(Engine->Renderer, L"EngineContent/LevelEditor/AssetButtonBase.png");
-		AssetButtonBackgroundBitmap->BitmapParams = SetupBitmapParams(AssetButtonBackgroundBitmap->Bitmap);
-		AssetButtonBackgroundBitmap->ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;
-		Engine->StoredButtonBitmapComponents.push_back(AssetButtonBackgroundBitmap);
+		ButtonToCreate->AdditionalBackgroundBitmap.BitmapParams = 
+			SetupBitmapParams(ButtonToCreate->AdditionalBackgroundBitmap.Bitmap);
+		ButtonToCreate->AdditionalBackgroundBitmap.ComponentLocation = 
+			ButtonToCreate->ButtonParams.ButtonLocation;
+		Engine->StoredButtonBitmapComponents.push_back(&ButtonToCreate->AdditionalBackgroundBitmap);
 	}
 
 	// Create button collider
-	ButtonToCreate->ButtonCollider = new CollisionComponent();
-	ButtonToCreate->ButtonCollider->CollisionRect = BitmapVector2D;
-	ButtonToCreate->ButtonCollider->ComponentLocation = ButtonToCreate->ButtonBitmap->ComponentLocation;
-	ButtonToCreate->ButtonCollider->CollisionTag = ButtonToCreate->ButtonParams.ButtonCollisionTag;
+	ButtonToCreate->ButtonCollider.CollisionRect = BitmapVector2D;
+	ButtonToCreate->ButtonCollider.ComponentLocation = ButtonToCreate->ButtonBitmap.ComponentLocation;
+	ButtonToCreate->ButtonCollider.CollisionTag = ButtonToCreate->ButtonParams.ButtonCollisionTag;
 	// Only render collision rect if in debug mode
 	if (Engine->DebugMode)
 	{
-		ButtonToCreate->ButtonCollider->CollisionRectColor = Engine->EditorCollisionRectColor;
-		ButtonToCreate->ButtonCollider->RenderCollisionRect = true;
+		ButtonToCreate->ButtonCollider.CollisionRectColor = Engine->EditorCollisionRectColor;
+		ButtonToCreate->ButtonCollider.RenderCollisionRect = true;
 	}
-	Engine->StoredEditorCollisionComponents.push_back(ButtonToCreate->ButtonCollider);
+	Engine->StoredEditorCollisionComponents.push_back(&ButtonToCreate->ButtonCollider);
 	
 	// Create text for button if button desired text is not empty
 	if (ButtonToCreate->ButtonParams.ButtonTextString != "")
@@ -447,23 +447,20 @@ Button* CreateButton(VoodooEngine* Engine, EButtonType ButtonType,
 	return ButtonToCreate;
 }
 
-void DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete)
+Button* DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete)
 {	
 	if (!ButtonToDelete)
 	{
-		return;
+		return nullptr;
 	}
 	
 	Engine->StoredButtonBitmapComponents.erase(std::remove(
 		Engine->StoredButtonBitmapComponents.begin(),
-		Engine->StoredButtonBitmapComponents.end(), ButtonToDelete->ButtonBitmap));
+		Engine->StoredButtonBitmapComponents.end(), &ButtonToDelete->ButtonBitmap));
 
 	Engine->StoredEditorCollisionComponents.erase(std::remove(
 		Engine->StoredEditorCollisionComponents.begin(),
-		Engine->StoredEditorCollisionComponents.end(), ButtonToDelete->ButtonCollider));
-	
-	delete ButtonToDelete->ButtonBitmap;
-	delete ButtonToDelete->ButtonCollider;
+		Engine->StoredEditorCollisionComponents.end(), &ButtonToDelete->ButtonCollider));
 
 	while (!ButtonToDelete->ButtonText.empty())
 	{
@@ -499,54 +496,87 @@ void DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete)
 	}
 
 	delete ButtonToDelete;
+	return nullptr;
+}
+
+void SetButtonText(Button* ButtonTextToUpdate, EButtonState ButtonState)
+{
+	for (int i = 0; i < ButtonTextToUpdate->ButtonText.size(); i++)
+	{
+		switch (ButtonState)
+		{
+		case Default:
+			ButtonTextToUpdate->ButtonText[i]->BitmapParams.HiddenInGame = false;
+			break;
+		case Disabled:
+			ButtonTextToUpdate->ButtonText[i]->BitmapParams.HiddenInGame = false;
+			break;
+		case Hidden:
+			ButtonTextToUpdate->ButtonText[i]->BitmapParams.HiddenInGame = true;
+			break;
+		}
+	}
+}
+
+void UpdateButtonState(VoodooEngine* Engine, Button* ButtonToUpdate, EButtonState NewButtonState)
+{
+	if (ButtonToUpdate == nullptr)
+	{
+		return;
+	}
+
+	switch (NewButtonState)
+	{
+	case Default:
+		ButtonToUpdate->ButtonBitmap.BitmapParams.HiddenInGame = false;
+		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = false;
+		ButtonToUpdate->ButtonCollider.NoCollision = false;
+		SetButtonText(ButtonToUpdate, NewButtonState);
+		break;
+	case Disabled:
+		ButtonToUpdate->ButtonBitmap.BitmapParams.HiddenInGame = false;
+		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = false;
+		ButtonToUpdate->ButtonCollider.NoCollision = true;
+		SetButtonText(ButtonToUpdate, NewButtonState);
+		break;
+	case Hidden:
+		ButtonToUpdate->ButtonBitmap.BitmapParams.HiddenInGame = true;
+		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = true;
+		ButtonToUpdate->ButtonCollider.NoCollision = true;
+		ScreenPrint("it_got_here_no_collision_set", Engine);
+		SetButtonText(ButtonToUpdate, NewButtonState);
+		break;
+	}
 }
 
 void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
 {
 	// Add mouse collider used for detecting mouse "hover" (is invisible as default, when not in debug mode)
-	Engine->Mouse.MouseCollider = new CollisionComponent();
 	SetMouseColliderSize(Engine, MouseColliderSize);
-	Engine->StoredEditorCollisionComponents.push_back(Engine->Mouse.MouseCollider);
+	Engine->StoredEditorCollisionComponents.push_back(&Engine->Mouse.MouseCollider);
 
-	Engine->Mouse.MouseBitmap = new BitmapComponent();
-	Engine->Mouse.MouseBitmap->Bitmap = SetBitmap(
+	Engine->Mouse.MouseBitmap.Bitmap = SetBitmap(
 		Engine->Renderer, L"EngineContent/Cursor/CustomMouseCursor.png");
 
 	// Setup custom mouse cursor bitmap if found, otherwise render mouse collider instead
-	if (Engine->Mouse.MouseBitmap->Bitmap)
+	if (Engine->Mouse.MouseBitmap.Bitmap)
 	{
-		Engine->Mouse.MouseBitmap->BitmapParams = SetupBitmapParams(Engine->Mouse.MouseBitmap->Bitmap);
+		Engine->Mouse.MouseBitmap.BitmapParams = SetupBitmapParams(Engine->Mouse.MouseBitmap.Bitmap);
 
 		if (Engine->DebugMode)
-			Engine->Mouse.MouseCollider->RenderCollisionRect = true;
+			Engine->Mouse.MouseCollider.RenderCollisionRect = true;
 	}
 	else
 	{
 		// Auto render collision rect if no mouse cursor bitmap is found 
 		// (so you still can see a visual representation of where the mouse is)
-		Engine->Mouse.MouseCollider->RenderCollisionRect = true;
-	}
-}
-
-void DeleteMouse(VoodooEngine* Engine)
-{
-	if (Engine->Mouse.MouseBitmap)
-	{
-		delete Engine->Mouse.MouseBitmap;
-		Engine->Mouse.MouseBitmap = nullptr;
-	}
-
-	if (Engine->Mouse.MouseCollider)
-	{
-		RemoveCollisionComponent(Engine->Mouse.MouseCollider, Engine);
-		delete Engine->Mouse.MouseCollider;
-		Engine->Mouse.MouseCollider = nullptr;
+		Engine->Mouse.MouseCollider.RenderCollisionRect = true;
 	}
 }
 
 void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize)
 {
-	Engine->Mouse.MouseCollider->CollisionRect = ColliderSize;
+	Engine->Mouse.MouseCollider.CollisionRect = ColliderSize;
 }
 
 void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation)
@@ -556,16 +586,11 @@ void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation)
 
 	Engine->Mouse.Location = NewLocation;
 
-	if (Engine->Mouse.MouseBitmap)
-		Engine->Mouse.MouseBitmap->ComponentLocation = NewLocation;
+	Engine->Mouse.MouseBitmap.ComponentLocation = NewLocation;
 
-	if (Engine->Mouse.MouseCollider &&
-		Engine->Mouse.MouseBitmap)
-	{
-		Engine->Mouse.MouseCollider->ComponentLocation =
-		{Engine->Mouse.MouseBitmap->ComponentLocation.X + Engine->Mouse.MouseCollider->CollisionRectOffset.X,
-		Engine->Mouse.MouseBitmap->ComponentLocation.Y + Engine->Mouse.MouseCollider->CollisionRectOffset.Y};
-	}
+	Engine->Mouse.MouseCollider.ComponentLocation =
+		{Engine->Mouse.MouseBitmap.ComponentLocation.X + Engine->Mouse.MouseCollider.CollisionRectOffset.X,
+		Engine->Mouse.MouseBitmap.ComponentLocation.Y + Engine->Mouse.MouseCollider.CollisionRectOffset.Y};
 }
 
 void UpdateCustomMouseCursor(VoodooEngine* Engine)
@@ -863,30 +888,30 @@ void RenderBitmaps(ID2D1HwndRenderTarget* Renderer,
 void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine)
 {
 	// Render mouse collider as fallback if no custom cursor image file is found
-	if (!Engine->Mouse.MouseBitmap->Bitmap)
+	if (Engine->Mouse.MouseBitmap.Bitmap == nullptr)
 	{
-		RenderCollisionRectangle(Renderer, Engine->Mouse.MouseCollider);
+		RenderCollisionRectangle(Renderer, &Engine->Mouse.MouseCollider);
 		return;
 	}
 	
 	D2D_RECT_F DestRect =
 		D2D1::RectF(
-		Engine->Mouse.MouseBitmap->ComponentLocation.X,
-		Engine->Mouse.MouseBitmap->ComponentLocation.Y,
-		Engine->Mouse.MouseBitmap->ComponentLocation.X + 
-		Engine->Mouse.MouseBitmap->BitmapParams.BitmapOffsetRight.X,
-		Engine->Mouse.MouseBitmap->ComponentLocation.Y + 
-		Engine->Mouse.MouseBitmap->BitmapParams.BitmapOffsetRight.Y);
+		Engine->Mouse.MouseBitmap.ComponentLocation.X,
+		Engine->Mouse.MouseBitmap.ComponentLocation.Y,
+		Engine->Mouse.MouseBitmap.ComponentLocation.X + 
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapOffsetRight.X,
+		Engine->Mouse.MouseBitmap.ComponentLocation.Y + 
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapOffsetRight.Y);
 
 	D2D_RECT_F SourceRect =
 		D2D1::RectF(
-		Engine->Mouse.MouseBitmap->BitmapParams.BitmapOffsetLeft.X,
-		Engine->Mouse.MouseBitmap->BitmapParams.BitmapOffsetLeft.Y,
-		Engine->Mouse.MouseBitmap->BitmapParams.BitmapSource.X,
-		Engine->Mouse.MouseBitmap->BitmapParams.BitmapSource.Y);
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapOffsetLeft.X,
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapOffsetLeft.Y,
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSource.X,
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSource.Y);
 
 	Renderer->DrawBitmap(
-		Engine->Mouse.MouseBitmap->Bitmap,
+		Engine->Mouse.MouseBitmap.Bitmap,
 		DestRect,
 		// Always render mouse cursor at full opacity
 		1,
@@ -1090,15 +1115,16 @@ bool SetEditorMode()
 	return NewEditorMode;
 }
 
-void LoadGameObjectsFromFile(
-	const wchar_t* FileName, VoodooEngine* Engine, void(*LoadObjectFromGameID)(int, SVector, bool))
+void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine)
 {
+	// Delete all current game objects
+	Engine->DeleteAllGameObjects();
+
 	std::fstream File(FileName);
 	if (File.is_open())
 	{
 		int GameObjectID = 0;
 		SVector SpawnLocation = {};
-		bool CreateCollision = false;
 
 		std::string VerticalLine;
 		while (getline(File, VerticalLine))
@@ -1114,13 +1140,8 @@ void LoadGameObjectsFromFile(
 			GameObjectID = (std::stoi(HorizontalLineNum[0]));
 			SpawnLocation.X = (std::stof(HorizontalLineNum[1]));
 			SpawnLocation.Y = (std::stof(HorizontalLineNum[2]));
-			// Check if current object wants to have collision created
-			if (HorizontalLineNum[3] == "true")
-			{
-				CreateCollision = true;
-			}
 			
-			LoadObjectFromGameID(GameObjectID, SpawnLocation, CreateCollision);
+			Engine->AssetLoadFunctionPointer(GameObjectID, SpawnLocation);
 		}
 	}
 
