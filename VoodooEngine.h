@@ -456,65 +456,65 @@ public:
 	}
 
 	// Creates an instance game object based on asset ID
-	// If no valid ID is found, then no object will be created and nullptr will be returned
+	// If no valid ID is found, then no object will be created with early return
 	template<class T>
-	T* CreateGameObject(T* ClassToSpawn, int AssetID, SVector SpawnLocation)
+	void CreateGameObject(T* ClassToSpawn, int AssetID, SVector SpawnLocation)
 	{
 		auto Iterator = StoredGameObjectIDs.find(AssetID);
 
-		// If object id is not found, invalidate and return nullptr
+		// If object id is not found, invalidate and early return
 		if (Iterator == StoredGameObjectIDs.end())
 		{
-			ClassToSpawn = nullptr;
-			return ClassToSpawn;
+			return;
 		}
 
 		const wchar_t* AssetPath = Iterator->second.AssetPath;
 		bool CreateAssetCollision = Iterator->second.CreateDefaultAssetCollision;
 
-		ClassToSpawn = new T;
-		ClassToSpawn->Location = SpawnLocation;
-		ClassToSpawn->GameObjectNumberID = AssetID;
-		ClassToSpawn->CreateDefaultAssetCollisionInGame = CreateAssetCollision;
-		ClassToSpawn->GameObjectBitmap.Bitmap = SetBitmap(Renderer, AssetPath);
-		ClassToSpawn->GameObjectBitmap.BitmapParams = 
-			SetupBitmapParams(ClassToSpawn->GameObjectBitmap.Bitmap);
-		ClassToSpawn->GameObjectBitmap.ComponentLocation = SpawnLocation;
-		StoredBitmapComponents.push_back(&ClassToSpawn->GameObjectBitmap);
+		StoredGameObjects.push_back(new T);
+		StoredGameObjects.back()->Location = SpawnLocation;
+		StoredGameObjects.back()->GameObjectNumberID = AssetID;
+		StoredGameObjects.back()->CreateDefaultAssetCollisionInGame = CreateAssetCollision;
+		StoredGameObjects.back()->GameObjectBitmap.Bitmap = SetBitmap(Renderer, AssetPath);
+		StoredGameObjects.back()->GameObjectBitmap.BitmapParams =
+			SetupBitmapParams(StoredGameObjects.back()->GameObjectBitmap.Bitmap);
+		StoredGameObjects.back()->GameObjectBitmap.ComponentLocation = SpawnLocation;
+		StoredBitmapComponents.push_back(&StoredGameObjects.back()->GameObjectBitmap);
 
 		// If in editor mode, create a clickable collision rect for the spawned game object 
 		// in order for it to be selectable in the level editor
 		if (EditorMode || CreateAssetCollision)
 		{
 			SVector GameObjectBitmapSize = 
-				{ ClassToSpawn->GameObjectBitmap.Bitmap->GetSize().width,
-				ClassToSpawn->GameObjectBitmap.Bitmap->GetSize().height };
-			ClassToSpawn->AssetCollision.CollisionRect = GameObjectBitmapSize;
-			ClassToSpawn->AssetCollision.ComponentLocation = SpawnLocation;
-			ClassToSpawn->AssetCollision.CollisionTag = AssetID;
-			ClassToSpawn->AssetCollision.Owner = ClassToSpawn;
+				{ StoredGameObjects.back()->GameObjectBitmap.Bitmap->GetSize().width,
+				StoredGameObjects.back()->GameObjectBitmap.Bitmap->GetSize().height };
+			StoredGameObjects.back()->AssetCollision.CollisionRect = GameObjectBitmapSize;
+			StoredGameObjects.back()->AssetCollision.ComponentLocation = SpawnLocation;
+			StoredGameObjects.back()->AssetCollision.CollisionTag = AssetID;
+			StoredGameObjects.back()->AssetCollision.Owner = StoredGameObjects.back();
 			// Only set to render collision rect if in debug mode
 			if (DebugMode)
 			{
-				ClassToSpawn->AssetCollision.RenderCollisionRect = true;
-				ClassToSpawn->AssetCollision.CollisionRectColor = EditorCollisionRectColor;
+				StoredGameObjects.back()->AssetCollision.RenderCollisionRect = true;
+				StoredGameObjects.back()->AssetCollision.CollisionRectColor = EditorCollisionRectColor;
 			}
-			StoredCollisionComponents.push_back(&ClassToSpawn->AssetCollision);
+			StoredCollisionComponents.push_back(&StoredGameObjects.back()->AssetCollision);
 		}
-		StoredGameObjects.push_back(ClassToSpawn);
-		ClassToSpawn->OnGameObjectCreated(SpawnLocation);
-
-		return ClassToSpawn;
+		StoredGameObjects.back()->OnGameObjectCreated(SpawnLocation);
 	};
 	// Removes game object from memory
 	// Before it gets deleted a custom deconstructor "OnGameObjectDeleted"
 	// (virtual function, not pure but optional) is called
 	// This can be used to delete additional stuff created within the class
-	// Returns nullptr
 	template <class T> 
-	T* DeleteGameObject(T* ClassToDelete)
+	void DeleteGameObject(T* ClassToDelete)
 	{
 		RemoveBitmapComponent(&ClassToDelete->GameObjectBitmap, this);
+		if (ClassToDelete->GameObjectBitmap.Bitmap != nullptr)
+		{
+			ClassToDelete->GameObjectBitmap.Bitmap->Release();
+			ClassToDelete->GameObjectBitmap.Bitmap = nullptr;
+		}
 		RemoveCollisionComponent(&ClassToDelete->AssetCollision, this);
 		
 		StoredGameObjects.erase(std::remove(
@@ -527,7 +527,7 @@ public:
 		// such as "GameObjectBitmap", "AssetCollision" etc.
 		ClassToDelete->OnGameObjectDeleted();
 		delete ClassToDelete;
-		return nullptr;
+		ClassToDelete = nullptr;
 	};
 	void DeleteAllGameObjects()
 	{
@@ -535,9 +535,16 @@ public:
 		{
 			for (int i = 0; i < StoredGameObjects.size(); i++)
 			{
-				DeleteGameObject(StoredGameObjects[i]);
+				if (StoredGameObjects[i] != nullptr)
+				{
+					DeleteGameObject(StoredGameObjects[i]);
+				}
 			}
 		}
+
+		std::vector<BitmapComponent*>().swap(StoredBitmapComponents);
+		std::vector<CollisionComponent*>().swap(StoredCollisionComponents);
+		std::vector<GameObject*>().swap(StoredGameObjects);
 	};
 };
 extern "C" VOODOOENGINE_API void UpdateMouseInput(VoodooEngine* Engine, UINT Message);
@@ -1036,7 +1043,7 @@ public:
 
 		if (CurrentStoredButtonAssets.empty())
 		{
-			ScreenPrint("assets_empty", Engine);
+			//ScreenPrint("assets_empty", Engine);
 		}
 	};
 	void ResetButtonsBitmapSource(Button* ButtonBitmapToReset)
