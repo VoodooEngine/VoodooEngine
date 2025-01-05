@@ -51,8 +51,8 @@
 // Global collision tags used by the editor
 #define TAG_LEVEL_EDITOR_GIZMO -1
 #define TAG_LEVEL_EDITOR_BUTTON_ID_NONE -2
-#define TAG_LEVEL_EDITOR_BUTTON_SAVELEVEL -3
-#define TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL -4
+#define TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL -3
+#define TAG_LEVEL_EDITOR_BUTTON_SAVELEVEL -4
 #define TAG_LEVEL_EDITOR_BUTTON_PLAYLEVEL -5
 #define TAG_LEVEL_EDITOR_BUTTON_STOPPLAY -6
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_PREVIOUS -7
@@ -197,7 +197,7 @@ extern "C" VOODOOENGINE_API SVector GetObjectLocation(Object* Object);
 extern "C" VOODOOENGINE_API void SetComponentRelativeLocation(
 	Object* ComponentOwner, TransformComponent* Component, SVector NewLocation);
 // Gets the result of the addition of the owner object (e.g. player) location, 
-// and the component (e.g. gun) location 
+// and the component (e.g. player's gun) location 
 extern "C" VOODOOENGINE_API SVector GetComponentRelativeLocation(
 	Object* ComponentOwner, TransformComponent* Component);
 //---------------------
@@ -287,7 +287,7 @@ public:
 // Button
 //---------------------
 // Button state enum 
-// (used by e.g. "UpdateButtonState" function)
+// (used by e.g. "SetButtonState" function)
 enum EButtonState
 {
 	Default,
@@ -404,6 +404,7 @@ public:
 	LARGE_INTEGER FPS;
 	float TargetSecondsPerFrame = 1 / 100;
 	float DeltaTime = 0;
+	char FileName[100];
 	void(*AssetLoadFunctionPointer)(int, SVector);
 	std::vector<UpdateComponent*> StoredUpdateComponents;
 	std::vector<CollisionComponent*> StoredCollisionComponents;
@@ -455,17 +456,19 @@ public:
 		}
 	}
 
-	// Creates an instance game object based on asset ID
-	// If no valid ID is found, then no object will be created with early return
+	// Creates an instance game object based on class to spawn/asset ID
+	// if no valid ID is found, then no object will be created and nullptr is returned
+	// if valid ID the created object is returned
 	template<class T>
-	void CreateGameObject(T* ClassToSpawn, int AssetID, SVector SpawnLocation)
+	T* CreateGameObject(T* ClassToSpawn, int AssetID, SVector SpawnLocation)
 	{
 		auto Iterator = StoredGameObjectIDs.find(AssetID);
 
-		// If object id is not found, invalidate and early return
+		// If object id is not found, invalidate and return nullptr
 		if (Iterator == StoredGameObjectIDs.end())
 		{
-			return;
+			ClassToSpawn = nullptr;
+			return nullptr;
 		}
 
 		const wchar_t* AssetPath = Iterator->second.AssetPath;
@@ -501,13 +504,15 @@ public:
 			StoredCollisionComponents.push_back(&StoredGameObjects.back()->AssetCollision);
 		}
 		StoredGameObjects.back()->OnGameObjectCreated(SpawnLocation);
+		return (T*)(StoredGameObjects.back());
 	};
 	// Removes game object from memory
-	// Before it gets deleted a custom deconstructor "OnGameObjectDeleted"
+	// before it gets deleted a custom deconstructor "OnGameObjectDeleted"
 	// (virtual function, not pure but optional) is called
-	// This can be used to delete additional stuff created within the class
+	// this can be used to delete additional stuff created within the class
+	// returns nullptr
 	template <class T> 
-	void DeleteGameObject(T* ClassToDelete)
+	T* DeleteGameObject(T* ClassToDelete)
 	{
 		RemoveBitmapComponent(&ClassToDelete->GameObjectBitmap, this);
 		if (ClassToDelete->GameObjectBitmap.Bitmap != nullptr)
@@ -528,6 +533,7 @@ public:
 		ClassToDelete->OnGameObjectDeleted();
 		delete ClassToDelete;
 		ClassToDelete = nullptr;
+		return nullptr;
 	};
 	void DeleteAllGameObjects()
 	{
@@ -564,8 +570,8 @@ extern "C" VOODOOENGINE_API Button* CreateButton(
 	SVector ButtonLocation, const wchar_t* AssetPath);
 
 extern "C" VOODOOENGINE_API Button* DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete);
-extern "C" VOODOOENGINE_API void UpdateButtonState(
-	VoodooEngine* Engine, Button* ButtonToUpdate, EButtonState NewButtonState);
+extern "C" VOODOOENGINE_API void SetButtonState(
+	Button* ButtonToUpdate, EButtonState NewButtonState, bool KeepBitmapOffsetUnchanged = false);
 //-------------------------------------------
 
 // Editor asset list
@@ -853,11 +859,29 @@ public:
 };
 //---------------------
 
+// File I/O
+//-------------------------------------------
+// Read only
+extern "C" VOODOOENGINE_API bool SetDebugMode();
+extern "C" VOODOOENGINE_API bool SetEditorMode();
+// Saves the current open file as a "Lev" file
+extern "C" VOODOOENGINE_API void SaveLevelFile(VoodooEngine* Engine);
+// Opens windows file dialouge for which is used to select what level to open 
+extern "C" VOODOOENGINE_API void OpenLevelFile(VoodooEngine* Engine);
+// Read/Write (saving/loading)
+extern "C" VOODOOENGINE_API void SaveGameObjectsToFile(char* FileName, VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine);
+//-------------------------------------------
+
 // Level Editor
 //-------------------------------------------
 class LevelEditor : public Object, public UpdateComponent, public InputCallback
 {
 
+#define BUTTON_LOC_X_OPENLEVEL 100
+#define BUTTON_LOC_Y_OPENLEVEL 200
+#define BUTTON_LOC_X_SAVELEVEL 300
+#define BUTTON_LOC_Y_SAVELEVEL 200
 #define BUTTON_LOC_X_PLAYLEVEL 890
 #define BUTTON_LOC_Y_PLAYLEVEL 20
 #define BUTTON_LOC_X_PREVIOUS 1615
@@ -900,6 +924,14 @@ public:
 		Engine->StoredEditorBitmapComponents.push_back(&LevelEditorUI);
 
 		// Create all the clickable level editor buttons
+		OpenLevelButton = CreateButton(
+			Engine, OpenLevelButton, TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL,
+			TwoSided, "open_level", { BUTTON_LOC_X_OPENLEVEL, BUTTON_LOC_Y_OPENLEVEL },
+			Asset.LevelEditorButtonDefaultW140);
+		SaveLevelButton = CreateButton(
+			Engine, SaveLevelButton, TAG_LEVEL_EDITOR_BUTTON_SAVELEVEL,
+			TwoSided, "save_level", { BUTTON_LOC_X_SAVELEVEL, BUTTON_LOC_Y_SAVELEVEL },
+			Asset.LevelEditorButtonDefaultW140);
 		CreatePlayLevelButton();
 		PreviousButton = CreateButton(
 			Engine, PreviousButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_PREVIOUS, 
@@ -1039,53 +1071,46 @@ public:
 			}
 		}
 
-		CurrentStoredButtonAssets.clear();
+		std::vector<SAssetButton>().swap(CurrentStoredButtonAssets);
 
 		if (CurrentStoredButtonAssets.empty())
 		{
 			//ScreenPrint("assets_empty", Engine);
 		}
 	};
-	void ResetButtonsBitmapSource(Button* ButtonBitmapToReset)
+	void ResetButtonsBitmapSource(Button* ButtonToSet)
 	{
-		if (!ButtonBitmapToReset)
+		if (!ButtonToSet)
 		{
 			return;
 		}
 
-		// Reset to the default bitmap source location (if two sided e.g. pressed/not pressed)
-		SetBitmapSourceLocationX(
-			&ButtonBitmapToReset->ButtonBitmap,
-			ButtonBitmapToReset->ButtonBitmap.Bitmap->GetSize().width / 2);
+		SetButtonState(ButtonToSet, EButtonState::Default);
 	};
-	void SetButtonBitmapSourceClicked(Button* ButtonBitmapToSet)
+	void SetButtonBitmapSourceClicked(Button* ButtonToSet)
 	{
-		if (!ButtonBitmapToSet)
+		if (!ButtonToSet)
 		{
 			return;
 		}
 
-		// This shifts the bitmap source of the button to render the "pressed" version of the button
-		int ButtonClickedSourceLocationOffsetX = 2;
-		
-		SetBitmapSourceLocationX(
-			&ButtonBitmapToSet->ButtonBitmap,
-			ButtonBitmapToSet->ButtonBitmap.Bitmap->GetSize().width / 2,
-			ButtonClickedSourceLocationOffsetX);
+		SetButtonState(ButtonToSet, EButtonState::Disabled);
 	};
 	void UpdateAssetThumbnailButtonsState(EButtonState NewButtonState)
 	{
 		for (int i = 0; i < CurrentStoredButtonAssets.size(); i++)
 		{
-			UpdateButtonState(Engine, CurrentStoredButtonAssets[i].AssetButton, NewButtonState);
+			SetButtonState(CurrentStoredButtonAssets[i].AssetButton, NewButtonState, true);
 		}
 	};
 	void UpdateAllButtonsState(EButtonState NewButtonState)
 	{
-		UpdateButtonState(Engine, PlayLevelButton, NewButtonState);
-		UpdateButtonState(Engine, StopPlayButton, NewButtonState);
-		UpdateButtonState(Engine, PreviousButton, NewButtonState);
-		UpdateButtonState(Engine, NextButton, NewButtonState);
+		SetButtonState(OpenLevelButton, NewButtonState);
+		SetButtonState(SaveLevelButton, NewButtonState);
+		SetButtonState(PlayLevelButton, NewButtonState, true);
+		SetButtonState(StopPlayButton, NewButtonState, true);
+		SetButtonState(PreviousButton, NewButtonState);
+		SetButtonState(NextButton, NewButtonState);
 		UpdateAssetThumbnailButtonsState(NewButtonState);
 	};
 	void UpdateLevelEditorVisibility(bool Hide)
@@ -1111,8 +1136,12 @@ public:
 		switch (HoveredButtonID)
 		{
 		case TAG_LEVEL_EDITOR_BUTTON_SAVELEVEL:
+			SaveLevelFile(Engine);
+			SetButtonBitmapSourceClicked(SaveLevelButton);
+			ScreenPrint("save_button_pressed", Engine);
 			break;
 		case TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL:
+			OpenLevelFile(Engine);
 			break;
 		case TAG_LEVEL_EDITOR_BUTTON_PLAYLEVEL:
 			DeletePlayLevelButton();
@@ -1143,12 +1172,31 @@ public:
 
 	void InputBroadcast(int Input, bool Pressed)
 	{
+		if (Input == VK_TAB)
+		{
+			if (LevelEditorVisible)
+			{
+				UpdateLevelEditorVisibility(true);
+			}
+			else if (!LevelEditorVisible)
+			{
+				UpdateLevelEditorVisibility(false);
+			}
+		}
+
+		if (!LevelEditorVisible)
+		{
+			return;
+		}
+
 		if (Engine->Mouse.PrimaryMousePressed)
 		{
 			OnButtonPressed();
 		}
 		else if (!Engine->Mouse.PrimaryMousePressed)
 		{
+			ResetButtonsBitmapSource(OpenLevelButton);
+			ResetButtonsBitmapSource(SaveLevelButton);
 			ResetButtonsBitmapSource(PlayLevelButton);
 			ResetButtonsBitmapSource(PreviousButton);
 			ResetButtonsBitmapSource(NextButton);
@@ -1160,18 +1208,6 @@ public:
 			Engine->DeleteGameObject(TransformGizmo.SelectedGameObject);
 			TransformGizmo.SelectedGameObject = nullptr;
 			TransformGizmo.SetGizmoState(true);
-		}
-
-		if (Input == VK_TAB)
-		{
-			if (LevelEditorVisible)
-			{
-				UpdateLevelEditorVisibility(true);
-			}
-			else if (!LevelEditorVisible)
-			{
-				UpdateLevelEditorVisibility(false);
-			}
 		}
 	};
 	void UpdateButtonCollisionCheck(Button* ButtonToUpdate)
@@ -1190,6 +1226,8 @@ public:
 			return;
 		}
 
+		UpdateButtonCollisionCheck(OpenLevelButton);
+		UpdateButtonCollisionCheck(SaveLevelButton);
 		UpdateButtonCollisionCheck(PlayLevelButton);
 		UpdateButtonCollisionCheck(StopPlayButton);
 		UpdateButtonCollisionCheck(PreviousButton);
@@ -1230,6 +1268,8 @@ private:
 	SEditorAssetList Asset;
 	SAssetIndex AssetIndexDisplayed;
 	std::vector<SAssetButton> CurrentStoredButtonAssets;
+	Button* OpenLevelButton = nullptr;
+	Button* SaveLevelButton = nullptr;
 	Button* PlayLevelButton = nullptr;
 	Button* StopPlayButton = nullptr;
 	Button* PreviousButton = nullptr;
@@ -1324,14 +1364,4 @@ extern "C" VOODOOENGINE_API float GetSecondsPerFrame(
 	LARGE_INTEGER* StartCounter, LARGE_INTEGER* EndCounter, LARGE_INTEGER* Frequency);
 extern "C" VOODOOENGINE_API void SetFPSLimit(VoodooEngine* Engine, float FPSLimit);
 extern "C" VOODOOENGINE_API float UpdateFrameRate(VoodooEngine* Engine);
-//-------------------------------------------
-
-// File I/O
-//-------------------------------------------
-// Read only
-extern "C" VOODOOENGINE_API bool SetDebugMode();
-extern "C" VOODOOENGINE_API bool SetEditorMode();
-// Read/Write (saving/loading)
-extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(
-	char* FileName, VoodooEngine* Engine);
 //-------------------------------------------

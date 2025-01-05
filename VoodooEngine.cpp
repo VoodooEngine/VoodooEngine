@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "VoodooEngine.h"
+#include <commdlg.h>
 #include <fstream>
 #include <sstream>
 
@@ -518,7 +519,8 @@ void SetButtonText(Button* ButtonTextToUpdate, EButtonState ButtonState)
 	}
 }
 
-void UpdateButtonState(VoodooEngine* Engine, Button* ButtonToUpdate, EButtonState NewButtonState)
+void SetButtonState(
+	Button* ButtonToUpdate, EButtonState NewButtonState, bool KeepBitmapOffsetUnchanged)
 {
 	if (ButtonToUpdate == nullptr)
 	{
@@ -532,18 +534,33 @@ void UpdateButtonState(VoodooEngine* Engine, Button* ButtonToUpdate, EButtonStat
 		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = false;
 		ButtonToUpdate->ButtonCollider.NoCollision = false;
 		SetButtonText(ButtonToUpdate, NewButtonState);
+		// Offset the bitmap source to the "default" location
+		if (!KeepBitmapOffsetUnchanged)
+		{
+			SetBitmapSourceLocationX(
+				&ButtonToUpdate->ButtonBitmap,
+				ButtonToUpdate->ButtonBitmap.Bitmap->GetSize().width / 2,
+				1);
+		}
 		break;
 	case Disabled:
 		ButtonToUpdate->ButtonBitmap.BitmapParams.HiddenInGame = false;
 		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = false;
 		ButtonToUpdate->ButtonCollider.NoCollision = true;
 		SetButtonText(ButtonToUpdate, NewButtonState);
+		// Offset the bitmap source to the "disabled" location
+		if (!KeepBitmapOffsetUnchanged)
+		{
+			SetBitmapSourceLocationX(
+				&ButtonToUpdate->ButtonBitmap,
+				ButtonToUpdate->ButtonBitmap.Bitmap->GetSize().width / 2,
+				2);
+		}
 		break;
 	case Hidden:
 		ButtonToUpdate->ButtonBitmap.BitmapParams.HiddenInGame = true;
 		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = true;
 		ButtonToUpdate->ButtonCollider.NoCollision = true;
-		ScreenPrint("it_got_here_no_collision_set", Engine);
 		SetButtonText(ButtonToUpdate, NewButtonState);
 		break;
 	}
@@ -1113,6 +1130,49 @@ bool SetEditorMode()
 	File.close();
 
 	return NewEditorMode;
+}
+
+void SaveLevelFile(VoodooEngine* Engine)
+{
+	SaveGameObjectsToFile(Engine->FileName, Engine);
+}
+
+void OpenLevelFile(VoodooEngine* Engine)
+{
+	OPENFILENAMEA OpenFileName = { sizeof(OPENFILENAMEA) };
+	OpenFileName.lStructSize = sizeof(OPENFILENAMEA);
+	OpenFileName.hwndOwner = Engine->Window.HWind;
+	OpenFileName.lpstrFile = Engine->FileName;
+	OpenFileName.lpstrTitle = "Level To Open";
+	OpenFileName.lpstrFilter = "Lev File\0*.LEV\0";
+	OpenFileName.nMaxFile = sizeof(Engine->FileName);
+
+	// If "cancel" button was pressed, then don't load assets
+	if (!GetOpenFileNameA(&OpenFileName))
+	{
+		return;
+	}
+	else
+	{
+		// Called once "open" button has been clicked
+		LoadGameObjectsFromFile(Engine->FileName, Engine);
+	}
+}
+
+void SaveGameObjectsToFile(char* FileName, VoodooEngine* Engine)
+{
+	std::ofstream File(FileName);
+	if (File.is_open())
+	{
+		for (int i = 0; i < Engine->StoredGameObjects.size(); i++)
+		{
+			File << Engine->StoredGameObjects[i]->GameObjectNumberID 
+				<< " " << Engine->StoredGameObjects[i]->Location.X 
+				<< " " << Engine->StoredGameObjects[i]->Location.Y << '\n';
+		}
+	}
+
+	File.close();
 }
 
 void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine)
