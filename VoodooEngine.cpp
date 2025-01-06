@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "VoodooEngine.h"
+
+// File I/O
 #include <commdlg.h>
 #include <fstream>
 #include <sstream>
@@ -290,6 +292,36 @@ BitmapComponent* CreateLetter(
 	return CreatedLetter;
 }
 
+void CreateUITextFormat(VoodooEngine* Engine)
+{
+	IDWriteFactory* IDWriteFactory = nullptr;
+
+	DWriteCreateFactory(
+		DWRITE_FACTORY_TYPE_SHARED,
+		__uuidof(IDWriteFactory),
+		reinterpret_cast<IUnknown**>(&IDWriteFactory));
+
+	IDWriteFactory->CreateTextFormat(
+		L"Arial",
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		20.0f * 96.0f / 72.0f,
+		L"en-US",
+		&Engine->TextFormat);
+
+	Engine->Renderer->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::Black),
+		&Engine->BlackBrush);
+
+	Engine->Renderer->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White),
+		&Engine->WhiteBrush);
+
+	IDWriteFactory->Release();
+}
+
 void CreateText(VoodooEngine* Engine, Button* ButtonReference, SButtonParameters ButtonParams)
 {
 	SEditorAssetList FontAssetPath;
@@ -315,6 +347,42 @@ void CreateText(VoodooEngine* Engine, Button* ButtonReference, SButtonParameters
 			ButtonReference->ButtonText.push_back(NewLetter);
 			Engine->StoredButtonTexts.push_back(NewLetter);
 		}
+	}
+}
+
+void RenderUITextsRenderLayer(VoodooEngine* Engine)
+{
+	D2D1_RECT_F OriginTextLocation = D2D1::RectF(1680.f, 110.f, 2000.f, 110.f);
+	float OffsetLocationY = 50;
+	for (int i = 0; i < Engine->StoredRenderLayerUITexts.size(); i++)
+	{
+		auto Iterator = Engine->StoredRenderLayerUITexts.find(i);
+		if (Iterator->second.HideText)
+		{
+			return;
+		}
+
+		if (Iterator->second.TextRenderType == ETextRenderType::RenderBlackBrush)
+		{
+			Engine->Renderer->DrawText(
+				Iterator->second.Text,
+				wcslen(Iterator->second.Text),
+				Engine->TextFormat,
+				OriginTextLocation,
+				Engine->BlackBrush);
+		}
+		else if (Iterator->second.TextRenderType == ETextRenderType::RenderWhiteBrush)
+		{
+			Engine->Renderer->DrawText(
+				Iterator->second.Text,
+				wcslen(Iterator->second.Text),
+				Engine->TextFormat,
+				OriginTextLocation,
+				Engine->WhiteBrush);
+		}
+
+		OriginTextLocation.top += OffsetLocationY;
+		OriginTextLocation.bottom += OffsetLocationY;
 	}
 }
 
@@ -627,6 +695,20 @@ void UpdateCustomMouseCursor(VoodooEngine* Engine)
 	}
 }
 
+void SetMouseState(bool Show, VoodooEngine* Engine)
+{
+	if (Show)
+	{
+		Engine->Mouse.MouseCollider.NoCollision = false;
+		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame = false;
+	}
+	else
+	{
+		Engine->Mouse.MouseCollider.NoCollision = true;
+		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame = true;
+	}
+}
+
 bool HideSystemMouseCursor(UINT Message, LPARAM LParam)
 {
 	// Hides system mouse cursor since engine is using custom icon for cursor
@@ -911,6 +993,11 @@ void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engi
 		return;
 	}
 	
+	if (Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame)
+	{
+		return;
+	}
+
 	D2D_RECT_F DestRect =
 		D2D1::RectF(
 		Engine->Mouse.MouseBitmap.ComponentLocation.X,

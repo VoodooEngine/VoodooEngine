@@ -6,14 +6,20 @@
 // 
 // Graphics
 // - Creation of an application window with custom title name and icon using "Win32 API"
-// - 2D bitmap rendering using "Direct2D API"
-// - 2D spritesheet animation
+// - Bitmap rendering using "Direct2D API"
+// - Spritesheet animation
+// - Dynamic flip of bitmap at runtime
+// - Text rendering using "DirectWrite API"
 // 
 // Gameplay
 // - User input for keyboard (using "Win32 API") and gamepad (using "XInput API") 
 // - Collision detection using "AABB" algorithm
 // - Playing one shot sounds/looping sounds using "XAudio2 API"
 // - Update function with deltatime
+// - Class/Interface support for gameplay such as, 
+// creating gameobjects dynamically during gameplay using base gameobject class 
+// and sending interface message to gameobjects e.g. open door, take damage from enemy etc.
+// - AI pathfinding (maybe do this hehe)
 // 
 // Tools
 // - Level editor 
@@ -25,7 +31,8 @@
 // 
 // - "S" stands for "Struct" e.g. "SVector", "SColor"
 // - "E" stands for "enum" e.g. "EButtonType"
-// - When a function name has prefix "Update" e.g. "UpdateAnimation", then it will be called every frame
+// - "I" stands for interface e.g. IInteract, ITakeDamage
+// - Every function name with prefix "Update" e.g. "UpdateAnimation", will be called every frame
 
 // STL library
 #include <map>
@@ -42,6 +49,10 @@
 #include <d2d1_1.h>
 #pragma comment(lib, "d2d1.lib")
 
+// DirectWrite API
+#include <dwrite.h>
+#pragma comment(lib, "Dwrite.lib")
+
 #ifdef VOODOOENGINE_EXPORTS
 #define VOODOOENGINE_API __declspec(dllexport)
 #else
@@ -57,6 +68,24 @@
 #define TAG_LEVEL_EDITOR_BUTTON_STOPPLAY -6
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_PREVIOUS -7
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_NEXT -8
+#define TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_ASSETS -9
+#define TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_RENDERLAYERS -10
+
+enum ETextRenderType
+{
+	RenderWhiteBrush,
+	RenderBlackBrush
+};
+
+// Struct used to determine the UI text parameters
+//---------------------
+struct UITextParameters
+{
+	const wchar_t* Text = L"";
+	ETextRenderType TextRenderType = ETextRenderType::RenderWhiteBrush;
+	bool HideText = false;
+};
+//---------------------
 
 // Input
 //---------------------
@@ -368,6 +397,7 @@ public:
 struct SAssetParameters
 {
 	const wchar_t* AssetPath = L"";
+	int RenderLayer = 0;
 	bool CreateDefaultAssetCollision = false;
 };
 // Asset button struct (used by level editor)
@@ -427,11 +457,20 @@ public:
 	// Default collision rect color for editor mode assets
 	SColor EditorCollisionRectColor = { 200, 0, 255 };
 
-	// Only used in editor mode
+	// Only used in level editor mode
 	SVector AssetButtonThumbnailDimensions = { 90, 90 };
 	std::vector<UpdateComponent*> StoredEditorUpdateComponents;
 	std::vector<BitmapComponent*> StoredEditorBitmapComponents;
 	std::vector<SAssetButton> StoredButtonAssets;
+
+	// Variables used by direct write to display UI text, 
+	// they will be created and be available for the remainder of the program
+	IDWriteTextFormat* TextFormat = nullptr;
+	ID2D1SolidColorBrush* BlackBrush = nullptr;
+	ID2D1SolidColorBrush* WhiteBrush = nullptr;
+	// Used to store all UI text for render layers using directwrite
+	std::map<int, UITextParameters> StoredRenderLayerUITexts;
+
 	// Used only for screen debug print
 	std::vector<BitmapComponent*> StoredScreenPrintTexts;
 	// This keeps track of the number of console text prints have been printed
@@ -473,6 +512,7 @@ public:
 
 		const wchar_t* AssetPath = Iterator->second.AssetPath;
 		bool CreateAssetCollision = Iterator->second.CreateDefaultAssetCollision;
+		int AssignedRenderLayer = Iterator->second.RenderLayer;
 
 		StoredGameObjects.push_back(new T);
 		StoredGameObjects.back()->Location = SpawnLocation;
@@ -481,6 +521,7 @@ public:
 		StoredGameObjects.back()->GameObjectBitmap.Bitmap = SetBitmap(Renderer, AssetPath);
 		StoredGameObjects.back()->GameObjectBitmap.BitmapParams =
 			SetupBitmapParams(StoredGameObjects.back()->GameObjectBitmap.Bitmap);
+		StoredGameObjects.back()->GameObjectBitmap.BitmapParams.RenderLayer = AssignedRenderLayer;
 		StoredGameObjects.back()->GameObjectBitmap.ComponentLocation = SpawnLocation;
 		StoredBitmapComponents.push_back(&StoredGameObjects.back()->GameObjectBitmap);
 
@@ -558,6 +599,7 @@ extern "C" VOODOOENGINE_API void CreateMouse(VoodooEngine* Engine, SVector Mouse
 extern "C" VOODOOENGINE_API void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize);
 extern "C" VOODOOENGINE_API void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation);
 extern "C" VOODOOENGINE_API void UpdateCustomMouseCursor(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void SetMouseState(bool Show, VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API bool HideSystemMouseCursor(UINT Message, LPARAM LParam);
 extern "C" VOODOOENGINE_API void RenderCustomMouseCursor(
 	ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine);
@@ -597,6 +639,10 @@ struct SEditorAssetList
 		L"EngineContent/LevelEditor/DefaultButtonW140.png";
 	const wchar_t* LevelEditorButtonActivateDeactivateW140 = 
 		L"EngineContent/LevelEditor/ActivateDeactivateButtonW140.png";
+	const wchar_t* LevelEditorButtonSelectedNotSelectedW160 =
+		L"EngineContent/LevelEditor/SelectedNotSelectedButtonW160.png";
+	const wchar_t* RenderLayerEyeIcon =
+		L"EngineContent/LevelEditor/RenderLayerEyeIcon.png";
 	// Gizmo
 	const wchar_t* Gizmo = L"EngineContent/LevelEditor/Gizmo.png";
 	//-----------------
@@ -612,6 +658,10 @@ extern "C" VOODOOENGINE_API void RemoveUpdateComponent(UpdateComponent* Componen
 // Remove input callback component from "StoredInputCallbacks"
 extern "C" VOODOOENGINE_API void RemoveInputCallback(InputCallback* Component, VoodooEngine* Engine);
 
+// Create the text format to be used by all direct write IU text for the remainder of the program
+extern "C" VOODOOENGINE_API void CreateUITextFormat(VoodooEngine* Engine);
+// Render UI text using direct write
+extern "C" VOODOOENGINE_API void RenderUITextsRenderLayer(VoodooEngine* Engine);
 // Print debug text to screen
 extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
 // Clear all debug text from screen
@@ -878,15 +928,19 @@ extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(char* FileName, VoodooE
 class LevelEditor : public Object, public UpdateComponent, public InputCallback
 {
 
-#define BUTTON_LOC_X_OPENLEVEL 100
-#define BUTTON_LOC_Y_OPENLEVEL 200
-#define BUTTON_LOC_X_SAVELEVEL 300
-#define BUTTON_LOC_Y_SAVELEVEL 200
+#define BUTTON_LOC_X_OPENLEVEL 20
+#define BUTTON_LOC_Y_OPENLEVEL 20
+#define BUTTON_LOC_X_SAVELEVEL 180
+#define BUTTON_LOC_Y_SAVELEVEL 20
 #define BUTTON_LOC_X_PLAYLEVEL 890
 #define BUTTON_LOC_Y_PLAYLEVEL 20
 #define BUTTON_LOC_X_PREVIOUS 1615
 #define BUTTON_LOC_X_NEXT 1770
 #define BUTTON_LOC_Y_NEXT_PREVIOUS 100
+#define BUTTON_LOC_X_ASSETSELECTION 1740
+#define BUTTON_LOC_Y_ASSETSELECTION 20
+#define BUTTON_LOC_X_RENDERLAYER 1560
+#define BUTTON_LOC_Y_RENDERLAYER 20
 
 // Asset selection grid location values
 #define ASSET_SELECTION_GRID_OFFSETLOC_COLUMN_1 0
@@ -906,6 +960,14 @@ class LevelEditor : public Object, public UpdateComponent, public InputCallback
 // Asset location spawned when asset button is clicked
 #define ASSET_SELECTION_SPAWN_LOCATION_X 850
 #define ASSET_SELECTION_SPAWN_LOCATION_Y 400
+
+// This enum determine 
+enum EMenuType
+{
+	None,
+	AssetSelection,
+	RenderLayerSelection
+};
 
 public:
 	LevelEditor(VoodooEngine* EngineReference)
@@ -941,19 +1003,37 @@ public:
 			Engine, NextButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_NEXT, 
 			TwoSided,  "next", { BUTTON_LOC_X_NEXT, BUTTON_LOC_Y_NEXT_PREVIOUS },
 			Asset.LevelEditorButtonDefaultW140);
+		AssetSelectionButton = CreateButton(
+			Engine, AssetSelectionButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_ASSETS,
+			TwoSided, "asset_select", { BUTTON_LOC_X_ASSETSELECTION, BUTTON_LOC_Y_ASSETSELECTION },
+			Asset.LevelEditorButtonSelectedNotSelectedW160);
+		RenderLayerSelectionButton = CreateButton(
+			Engine, RenderLayerSelectionButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_RENDERLAYERS,
+			TwoSided, "renderlayer", { BUTTON_LOC_X_RENDERLAYER, BUTTON_LOC_Y_RENDERLAYER },
+			Asset.LevelEditorButtonSelectedNotSelectedW160);
 
+		// Create all render layer visibility eye icons 
+		// (used to pick which render layer show/hide
+		CreateRenderLayerVisiblityEyeIconButtons();
 		// Create all clickable assets buttons
 		CreateAssetButtons();
 		// Display default asssets
 		DisplayAssets(0);
 
 		LevelEditorVisible = true;
+		
+		// Activate the asset selection menu as default on level editor startup
+		AssetSelectionVisible = true;
+		SetMenuVisible(EMenuType::AssetSelection);
+		SetButtonState(AssetSelectionButton, EButtonState::Disabled);
 	}
 
 	Gizmo TransformGizmo;
 	BitmapComponent LevelEditorUI;
 	void(*ButtonPressedCallback)(int);
 	bool LevelEditorVisible = false;
+	bool AssetSelectionVisible = false;
+	EMenuType CurrentMenuTypeActivated = EMenuType::None;
 
 	void CreateGizmo()
 	{
@@ -961,7 +1041,6 @@ public:
 		TransformGizmo.InitGizmoLocation({ 1000, 500 });
 		TransformGizmo.SetGizmoState(true);
 	};
-
 	void CreatePlayLevelButton()
 	{
 		PlayLevelButton = CreateButton(
@@ -1028,6 +1107,22 @@ public:
 			LocYOffset += OffsetYAmount;
 
 			Index++;
+		}
+	};
+	void CreateRenderLayerVisiblityEyeIconButtons()
+	{
+		SEditorAssetList AssetList;
+		SVector OriginLocation = { 1620, 110 };
+		float OffsetLocationY = 50;
+		for (int i = 0; i < Engine->StoredRenderLayerUITexts.size(); i++)
+		{
+			auto Iterator = Engine->StoredRenderLayerUITexts.find(i);
+			Button* EyeIcon = nullptr;
+				EyeIcon = CreateButton(Engine, EyeIcon, Iterator->first,
+				EButtonType::TwoSided, "", OriginLocation, AssetList.RenderLayerEyeIcon);
+			RenderLayerVisibilityEyeIconButtons.push_back(EyeIcon);
+
+			OriginLocation.Y += OffsetLocationY;
 		}
 	};
 	void DeletePlayLevelButton()
@@ -1105,18 +1200,21 @@ public:
 	};
 	void UpdateAllButtonsState(EButtonState NewButtonState)
 	{
+		UpdateAssetThumbnailButtonsState(NewButtonState);
 		SetButtonState(OpenLevelButton, NewButtonState);
 		SetButtonState(SaveLevelButton, NewButtonState);
 		SetButtonState(PlayLevelButton, NewButtonState, true);
 		SetButtonState(StopPlayButton, NewButtonState, true);
 		SetButtonState(PreviousButton, NewButtonState);
 		SetButtonState(NextButton, NewButtonState);
-		UpdateAssetThumbnailButtonsState(NewButtonState);
+		SetButtonState(AssetSelectionButton, NewButtonState);
+		SetButtonState(RenderLayerSelectionButton, NewButtonState);
 	};
 	void UpdateLevelEditorVisibility(bool Hide)
 	{
 		if (Hide)
 		{
+			SetMouseState(false, Engine);
 			HoveredButtonID = TAG_LEVEL_EDITOR_BUTTON_ID_NONE;
 			LevelEditorVisible = false;
 			LevelEditorUI.BitmapParams.HiddenInGame = true;
@@ -1124,10 +1222,145 @@ public:
 		}
 		else if (!Hide)
 		{
+			SetMouseState(true, Engine);
 			LevelEditorVisible = true;
 			LevelEditorUI.BitmapParams.HiddenInGame = false;
 			UpdateAllButtonsState(EButtonState::Default);
 		}
+	};
+	void SetAllRenderLayerUITextVisibility(bool ShowText)
+	{
+		bool HideRenderLayerUIText = false;
+		if (!ShowText)
+		{
+			HideRenderLayerUIText = true;
+		}
+
+		for (int i = 0; i < Engine->StoredRenderLayerUITexts.size(); i++)
+		{
+			auto Iterator = Engine->StoredRenderLayerUITexts.find(i);
+			Iterator->second.HideText = HideRenderLayerUIText;
+		}
+	};
+	void SetAllRenderLayerEyeIconButtonsState(EButtonState NewButtonState)
+	{
+		bool SetToHide = true;
+		bool DisableCollision = true;
+		switch (NewButtonState)
+		{
+		case Default:
+			SetToHide = false;
+			DisableCollision = false;
+			break;
+		// Never gets here
+		case Disabled:
+			break;
+		case Hidden:
+			SetToHide = true;
+			DisableCollision = true;
+			break;
+		}
+
+		for (int i = 0; i < RenderLayerVisibilityEyeIconButtons.size(); i++)
+		{
+			RenderLayerVisibilityEyeIconButtons[i]->ButtonBitmap.BitmapParams.HiddenInGame = SetToHide;
+			RenderLayerVisibilityEyeIconButtons[i]->ButtonCollider.NoCollision = DisableCollision;
+		}
+	};
+	void SetGameObjectsVisibilityBasedOnRenderLayer(bool EnableRenderLayer, int RenderLayer)
+	{
+		for (int i = 0; i < Engine->StoredGameObjects.size(); i++)
+		{
+			if (Engine->StoredGameObjects[i]->GameObjectBitmap.BitmapParams.RenderLayer == 
+				RenderLayer)
+			{
+				if (EnableRenderLayer)
+				{
+					Engine->StoredGameObjects[i]->
+						GameObjectBitmap.BitmapParams.HiddenInGame = false;
+					Engine->StoredGameObjects[i]->
+						AssetCollision.NoCollision = false;
+				}
+				else
+				{
+					Engine->StoredGameObjects[i]->
+						GameObjectBitmap.BitmapParams.HiddenInGame = true;
+					Engine->StoredGameObjects[i]->
+						AssetCollision.NoCollision = true;
+				}
+			}
+		}
+	};
+	void SetRenderLayerEyeIconButtonState()
+	{
+		// Do nothing if ID is out of range of render layers
+		if (HoveredButtonID > RenderLayerVisibilityEyeIconButtons.size())
+		{
+			return;
+		}
+
+		int BitmapWidth = 
+			RenderLayerVisibilityEyeIconButtons.at(
+			HoveredButtonID)->ButtonBitmap.Bitmap->GetSize().width / 2;
+		auto Iterator = Engine->StoredRenderLayerUITexts.find(HoveredButtonID);
+		if (Iterator->second.TextRenderType == ETextRenderType::RenderBlackBrush)
+		{
+			// Show "on" eye icon bitmap
+			SetBitmapSourceLocationX(
+				&RenderLayerVisibilityEyeIconButtons.at(
+				HoveredButtonID)->ButtonBitmap, BitmapWidth, 1);
+
+			Iterator->second.TextRenderType = ETextRenderType::RenderWhiteBrush;
+			SetGameObjectsVisibilityBasedOnRenderLayer(true, HoveredButtonID);
+		}
+		else if (Iterator->second.TextRenderType == ETextRenderType::RenderWhiteBrush)
+		{
+			// Show "off" eye icon bitmap
+			SetBitmapSourceLocationX(
+				&RenderLayerVisibilityEyeIconButtons.at(
+				HoveredButtonID)->ButtonBitmap, BitmapWidth, 2);
+
+			Iterator->second.TextRenderType = ETextRenderType::RenderBlackBrush;
+			SetGameObjectsVisibilityBasedOnRenderLayer(false, HoveredButtonID);
+		}
+	};
+	void SetMenuVisible(EMenuType MenuToShow)
+	{
+		switch (MenuToShow)
+		{
+		case LevelEditor::None:
+			AssetSelectionVisible = false;
+			UpdateAssetThumbnailButtonsState(EButtonState::Hidden);
+			SetButtonState(NextButton, EButtonState::Hidden);
+			SetButtonState(PreviousButton, EButtonState::Hidden);
+			SetButtonState(AssetSelectionButton, EButtonState::Hidden);
+			SetButtonState(RenderLayerSelectionButton, EButtonState::Hidden);
+			SetAllRenderLayerEyeIconButtonsState(EButtonState::Hidden);
+			SetAllRenderLayerUITextVisibility(false);
+			break;
+		case LevelEditor::AssetSelection:
+			AssetSelectionVisible = true;
+			UpdateAssetThumbnailButtonsState(EButtonState::Default);
+			SetButtonState(NextButton, EButtonState::Default);
+			SetButtonState(PreviousButton, EButtonState::Default);
+			SetButtonState(AssetSelectionButton, EButtonState::Disabled);
+			SetButtonState(RenderLayerSelectionButton, EButtonState::Default);
+			SetAllRenderLayerEyeIconButtonsState(EButtonState::Hidden);
+			SetAllRenderLayerUITextVisibility(false);
+			break;
+		case LevelEditor::RenderLayerSelection:
+			AssetSelectionVisible = false;
+			UpdateAssetThumbnailButtonsState(EButtonState::Hidden);
+			SetButtonState(NextButton, EButtonState::Hidden);
+			SetButtonState(PreviousButton, EButtonState::Hidden);
+			SetButtonState(RenderLayerSelectionButton, EButtonState::Disabled);
+			SetButtonState(AssetSelectionButton, EButtonState::Default);
+			SetAllRenderLayerEyeIconButtonsState(EButtonState::Default);
+			SetAllRenderLayerUITextVisibility(true);
+			break;
+		}
+
+		CurrentMenuTypeActivated = MenuToShow;
 	};
 	void OnButtonPressed()
 	{
@@ -1138,7 +1371,6 @@ public:
 		case TAG_LEVEL_EDITOR_BUTTON_SAVELEVEL:
 			SaveLevelFile(Engine);
 			SetButtonBitmapSourceClicked(SaveLevelButton);
-			ScreenPrint("save_button_pressed", Engine);
 			break;
 		case TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL:
 			OpenLevelFile(Engine);
@@ -1163,13 +1395,40 @@ public:
 			SetButtonBitmapSourceClicked(NextButton);
 			DisplayAssets(TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_NEXT);
 			break;
+		case TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_ASSETS:
+			SetMenuVisible(EMenuType::AssetSelection);
+			break;
+		case TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_RENDERLAYERS:
+			SetMenuVisible(EMenuType::RenderLayerSelection);
+			break;
 		default:
-			Engine->AssetLoadFunctionPointer(HoveredButtonID, 
-				{ ASSET_SELECTION_SPAWN_LOCATION_X, ASSET_SELECTION_SPAWN_LOCATION_Y });
+			// If no editor button is the button ID that was hovered, 
+			// then this switch statement gets executed 
+			switch (CurrentMenuTypeActivated)
+			{
+			// Do nothing
+			case LevelEditor::None:
+				break;
+			// In asset menu mode, 
+			// when asset button is clicked a game obejct based on ID is spawned
+			case LevelEditor::AssetSelection: 
+				Engine->AssetLoadFunctionPointer(HoveredButtonID,
+					{ ASSET_SELECTION_SPAWN_LOCATION_X, ASSET_SELECTION_SPAWN_LOCATION_Y });
+				break;
+			// In render layer selection mode,
+			// when eye icon button is clicked, 
+			// the game object assosiated with the eye icon's render layer,
+			// will be toggled visible/hidden
+			case LevelEditor::RenderLayerSelection:
+				// We use toggle (on/off) for each eye icon button
+				// the current state is determined internally for each eye icon button when clicked
+				// so if button is clicked when set to "on" it will be set to "off" and vice versa
+				SetRenderLayerEyeIconButtonState();
+				break;
+			}
 			break;
 		}
 	};
-
 	void InputBroadcast(int Input, bool Pressed)
 	{
 		if (Input == VK_TAB)
@@ -1196,10 +1455,13 @@ public:
 		else if (!Engine->Mouse.PrimaryMousePressed)
 		{
 			ResetButtonsBitmapSource(OpenLevelButton);
-			ResetButtonsBitmapSource(SaveLevelButton);
 			ResetButtonsBitmapSource(PlayLevelButton);
-			ResetButtonsBitmapSource(PreviousButton);
-			ResetButtonsBitmapSource(NextButton);
+			
+			if (AssetSelectionVisible)
+			{
+				ResetButtonsBitmapSource(PreviousButton);
+				ResetButtonsBitmapSource(NextButton);
+			}
 		}
 
 		if (Input == VK_DELETE &&
@@ -1219,6 +1481,13 @@ public:
 
 		BroadcastCollision(this, &ButtonToUpdate->ButtonCollider, &Engine->Mouse.MouseCollider);
 	};
+	void UpdateRenderLayerEyeIconButtonsCollisionCheck()
+	{
+		for (int i = 0; i < RenderLayerVisibilityEyeIconButtons.size(); i++)
+		{
+			UpdateButtonCollisionCheck(RenderLayerVisibilityEyeIconButtons[i]);
+		}
+	};
 	void Update(float DeltaTime)
 	{
 		if (Engine == nullptr)
@@ -1232,6 +1501,9 @@ public:
 		UpdateButtonCollisionCheck(StopPlayButton);
 		UpdateButtonCollisionCheck(PreviousButton);
 		UpdateButtonCollisionCheck(NextButton);
+		UpdateButtonCollisionCheck(AssetSelectionButton);
+		UpdateButtonCollisionCheck(RenderLayerSelectionButton);
+		UpdateRenderLayerEyeIconButtonsCollisionCheck();
 
 		for (int i = 0; i < CurrentStoredButtonAssets.size(); i++)
 		{
@@ -1274,6 +1546,9 @@ private:
 	Button* StopPlayButton = nullptr;
 	Button* PreviousButton = nullptr;
 	Button* NextButton = nullptr;
+	Button* AssetSelectionButton = nullptr;
+	Button* RenderLayerSelectionButton = nullptr;
+	std::vector<Button*> RenderLayerVisibilityEyeIconButtons;
 
 	void PopulateCurrentStoredAssets()
 	{
