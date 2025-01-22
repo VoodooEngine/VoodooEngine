@@ -6,16 +6,14 @@
 #include <fstream>
 #include <sstream>
 
-void CreateAppWindow(SWindowParams &WindowParams, WNDPROC InputCallbackFunction)
+void CreateAppWindow(SWindowParams& WindowParams, WNDPROC InputCallbackFunction)
 {
-	LPCWSTR ClassName = L"Class";
-	HINSTANCE HInstance = nullptr;
 	WindowParams.WindowClass.cbSize = sizeof(WNDCLASSEX);
 	WindowParams.WindowClass.lpfnWndProc = InputCallbackFunction;
 	WindowParams.WindowClass.cbClsExtra = 0;
 	WindowParams.WindowClass.cbWndExtra = 0;
-	WindowParams.WindowClass.hInstance = HInstance;
-	WindowParams.WindowClass.lpszClassName = ClassName;
+	WindowParams.WindowClass.hInstance = nullptr;
+	WindowParams.WindowClass.lpszClassName = L"Window";
 	WindowParams.WindowClass.lpszMenuName = nullptr;
 	WindowParams.WindowClass.hbrBackground = nullptr;
 	WindowParams.WindowClass.hIcon = nullptr;
@@ -722,6 +720,9 @@ bool HideSystemMouseCursor(UINT Message, LPARAM LParam)
 
 void Update(VoodooEngine* Engine, float DeltaTime)
 {
+	UpdateAppWindow();
+
+	/*
 	if (Engine->EditorMode)
 	{
 		for (int i = 0; i < Engine->StoredEditorUpdateComponents.size(); i++)
@@ -737,6 +738,7 @@ void Update(VoodooEngine* Engine, float DeltaTime)
 			Engine->StoredUpdateComponents[i]->Update(DeltaTime);
 		}
 	}
+	*/
 }
 
 ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* RenderTarget, HWND HWind)
@@ -1284,6 +1286,12 @@ void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine)
 				HorizontalLineNum.push_back(HorizontalLine);
 			}
 
+			if (HorizontalLineNum.empty())
+			{
+				File.close();
+				return;
+			}
+
 			GameObjectID = (std::stoi(HorizontalLineNum[0]));
 			SpawnLocation.X = (std::stof(HorizontalLineNum[1]));
 			SpawnLocation.Y = (std::stof(HorizontalLineNum[2]));
@@ -1293,4 +1301,60 @@ void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine)
 	}
 
 	File.close();
+}
+
+void InitializeWindow(
+	VoodooEngine* Engine,
+	LPCWSTR WindowTitle, 
+	WNDPROC WindowProcedure,
+	int WindowResolutionWidth, 
+	int WindowResolutionHeight, 
+	int WindowFullScreen)
+{
+	// Setup the window
+	Engine->Window.WindowTitle = WindowTitle;
+	Engine->Window.ScreenResolutionWidth = WindowResolutionWidth;
+	Engine->Window.ScreenResolutionHeight = WindowResolutionHeight;
+	Engine->Window.Fullscreen = WindowFullScreen;
+	CreateAppWindow(Engine->Window, WindowProcedure);
+
+	// Setup the app icon
+	SetCustomAppIcon(L"GameIcon.ico", Engine->Window.HWind);
+
+	// Setup the renderer
+	Engine->Renderer = SetupRenderer(Engine->Renderer, Engine->Window.HWind);
+}
+
+void InitializeEngine(VoodooEngine* Engine)
+{
+	// Assign based on configuration file if debug mode is true/false
+	Engine->DebugMode = SetDebugMode();
+	// Assign based on configuration file if editor mode is true/false
+	Engine->EditorMode = SetEditorMode();
+
+	// Create engine mouse cursor
+	CreateMouse(Engine, { 10, 10 });
+
+	// Create the text format for the engine UI texts
+	CreateUITextFormat(Engine);
+	
+	// Add stuff here to init
+
+	Engine->EngineRunning = true;
+}
+
+void RunEngine(VoodooEngine* Engine)
+{
+	if (!Engine)
+	{
+		return;
+	}
+
+	// Add deltatime calculation function here
+	Update(Engine, 0);
+	
+	Engine->Renderer->BeginDraw();
+	Engine->Renderer->Clear({});
+	RenderCustomMouseCursor(Engine->Renderer, Engine);
+	Engine->Renderer->EndDraw();
 }
