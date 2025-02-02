@@ -19,7 +19,6 @@
 // - Class/Interface support for gameplay such as, 
 // creating gameobjects dynamically during gameplay using base gameobject class 
 // and sending interface message to gameobjects e.g. open door, take damage from enemy etc.
-// - AI pathfinding (maybe do this hehe)
 // 
 // Tools
 // - Level editor 
@@ -441,6 +440,13 @@ struct SAssetButton
 	}
 };
 //---------------------
+struct SWindowsProcedureParameters
+{
+	HWND HWind;
+	UINT Message;
+	WPARAM WParam;
+	LPARAM LParam;
+};
 
 // Engine class
 class VoodooEngine
@@ -454,15 +460,25 @@ public:
 	bool GameRunning = false;
 	SWindowParams Window;
 	ID2D1HwndRenderTarget* Renderer = nullptr;
-	LARGE_INTEGER StartCounter;
-	LARGE_INTEGER EndCounter;
-	LARGE_INTEGER Counts;
-	LARGE_INTEGER Frequency;
-	LARGE_INTEGER FPS;
-	float TargetSecondsPerFrame = 1 / 100;
+	D2D1_COLOR_F ClearScreenColor = { 0, 0, 0 };
+
+	// Frame rate related
+	LARGE_INTEGER StartTicks;
+	LARGE_INTEGER TicksPerSecond;
+	LARGE_INTEGER CurrentTicks;
+	int FPS = 70;
+	int FrameTargetTime = (1000 / FPS);
+	int PreviousFrameTime = 0;
+	int TimeToWait = 0;
 	float DeltaTime = 0;
+
+	SWindowsProcedureParameters WinProcParams;
+
+	// File I/O related
 	char FileName[100];
 	void(*AssetLoadFunctionPointer)(int, SVector);
+
+	// Stored objects
 	std::vector<UpdateComponent*> StoredUpdateComponents;
 	std::vector<CollisionComponent*> StoredCollisionComponents;
 	std::vector<BitmapComponent*> StoredBitmapComponents;
@@ -473,9 +489,6 @@ public:
 	std::vector<GameObject*> StoredGameObjects;
 	std::map<int, SAssetParameters> StoredGameObjectIDs;
 	
-	// This determines the letter space for any texts created
-	int LetterSpace = 12;
-
 	// Used to store buttons information 
 	// (can be used for both in game UI and editor UI buttons)
 	std::vector<BitmapComponent*> StoredButtonBitmapComponents;
@@ -484,6 +497,10 @@ public:
 
 	// Default collision rect color for editor mode assets
 	SColor EditorCollisionRectColor = { 200, 0, 255 };
+	// Green color
+	SColor ColorGreen = { 0, 128, 0 };
+	// Red Color
+	SColor ColorRed = { 136, 0, 0 };
 
 	// Only used in level editor mode
 	SVector AssetButtonThumbnailDimensions = { 90, 90 };
@@ -505,6 +522,32 @@ public:
 	// (Offsets a newly printed text down a column if text in column already has been printed)
 	// Will reset once console window is deleted
 	int ScreenPrintTextColumnsPrinted = 0;
+
+	// This determines the letter space for any texts created
+	int LetterSpace = 12;
+
+	inline static LRESULT CALLBACK WindowsProcedure(
+		HWND HWind, UINT Message, WPARAM WParam, LPARAM LParam)
+	{
+		// Don't use engine if not running 
+		if (!VoodooEngine::Engine->EngineRunning)
+		{
+			return  DefWindowProc(HWind, Message, WParam, LParam);
+		}
+
+		// Stop running engine if pressed "X" icon in top right corner
+		if (Message == WM_DESTROY)
+		{
+			VoodooEngine::Engine->EngineRunning = false;
+		}
+
+		VoodooEngine::Engine->WinProcParams.HWind = HWind;
+		VoodooEngine::Engine->WinProcParams.Message = Message;
+		VoodooEngine::Engine->WinProcParams.WParam = WParam;
+		VoodooEngine::Engine->WinProcParams.LParam = LParam;
+
+		return DefWindowProc(HWind, Message, WParam, LParam);
+	};
 
 	void StartGame()
 	{
@@ -695,8 +738,6 @@ extern "C" VOODOOENGINE_API void RenderUITextsRenderLayer(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
 // Clear all debug text from screen
 extern "C" VOODOOENGINE_API void ClearScreenPrint(VoodooEngine* Engine);
-// Called when user has quit the application
-extern "C" VOODOOENGINE_API void CloseApp(VoodooEngine* Engine);
 //---------------------
 
 // Gizmo
@@ -718,7 +759,7 @@ public:
 	bool CanDragGizmo = false;
 	SVector MouseClickLocationOffset;
 	int GizmoSnapSize = 10;
-	int GizmoCollisionRectSize = 70;
+	float GizmoCollisionRectSize = 70;
 	bool RenderGizmoCollisionRect = false;
 
 	void SetupGizmoCollisionTag()
@@ -1886,17 +1927,16 @@ private:
 };
 //-------------------------------------------
 
-// Update function that calls update to all connected update components
+// Update the engine every frame (frame rate, window changes (resize etc.) and update components)
 //-------------------------------------------
-extern "C" VOODOOENGINE_API void Update(VoodooEngine* Engine, float DeltaTime);
+void Update(VoodooEngine* Engine);
 //-------------------------------------------
 
 // Frame rate related
 //-------------------------------------------
-extern "C" VOODOOENGINE_API float GetSecondsPerFrame(
-	LARGE_INTEGER* StartCounter, LARGE_INTEGER* EndCounter, LARGE_INTEGER* Frequency);
+UINT64 VoodooEngineGetTicks(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void SetFPSLimit(VoodooEngine* Engine, float FPSLimit);
-extern "C" VOODOOENGINE_API float UpdateFrameRate(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void UpdateFrameRate(VoodooEngine* Engine);
 //-------------------------------------------
 
 // Setup the application window and renderer

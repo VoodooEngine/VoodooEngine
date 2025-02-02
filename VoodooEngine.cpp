@@ -123,45 +123,29 @@ void UpdateMouseInput(VoodooEngine* Engine, UINT Message)
 	}
 }
 
-float GetSecondsPerFrame(
-	LARGE_INTEGER* StartCounter, LARGE_INTEGER* EndCounter, LARGE_INTEGER* Frequency)
+UINT64 VoodooEngineGetTicks(VoodooEngine* Engine)
 {
-	return ((float)(EndCounter->QuadPart - StartCounter->QuadPart) / (float)Frequency->QuadPart);
+	QueryPerformanceCounter(&Engine->CurrentTicks);
+	return (
+		UINT64)(((Engine->CurrentTicks.QuadPart - 
+		Engine->StartTicks.QuadPart) * 1000) / Engine->TicksPerSecond.QuadPart);
 }
 
 void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
 {
-	Engine->TargetSecondsPerFrame = 1 / FPSLimit;
+	Engine->FPS = FPSLimit;
 }
 
-float UpdateFrameRate(VoodooEngine* Engine)
+void UpdateFrameRate(VoodooEngine* Engine)
 {
-	QueryPerformanceCounter(&Engine->EndCounter);
-	float SecondsPerFrame = GetSecondsPerFrame(
-		&Engine->StartCounter, &Engine->EndCounter, &Engine->Frequency);
-
-	if (SecondsPerFrame < Engine->TargetSecondsPerFrame)
+	Engine->TimeToWait = Engine->FrameTargetTime - (VoodooEngineGetTicks(Engine) - Engine->PreviousFrameTime);
+	if (Engine->TimeToWait > 0 &&
+		Engine->TimeToWait <= Engine->FrameTargetTime)
 	{
-		DWORD sleep_ms;
-		sleep_ms = (DWORD)(1000 * (Engine->TargetSecondsPerFrame - SecondsPerFrame));
-		Sleep(sleep_ms);
-		while (SecondsPerFrame < Engine->TargetSecondsPerFrame)
-		{
-			QueryPerformanceCounter(&Engine->EndCounter);
-			SecondsPerFrame = GetSecondsPerFrame(
-				&Engine->StartCounter, &Engine->EndCounter, &Engine->Frequency);
-		}
+		Sleep(Engine->TimeToWait);
 	}
-
-	QueryPerformanceCounter(&Engine->EndCounter);
-	SecondsPerFrame = GetSecondsPerFrame(
-		&Engine->StartCounter, &Engine->EndCounter, &Engine->Frequency);
-
-	Engine->Counts.QuadPart = Engine->EndCounter.QuadPart - Engine->StartCounter.QuadPart;
-	Engine->FPS.QuadPart = Engine->Frequency.QuadPart / Engine->Counts.QuadPart;
-	Engine->StartCounter = Engine->EndCounter;
-
-	return SecondsPerFrame;
+	Engine->DeltaTime = (VoodooEngineGetTicks(Engine) - Engine->PreviousFrameTime) / 1000.0;
+	Engine->PreviousFrameTime = VoodooEngineGetTicks(Engine);
 }
 
 void RemoveBitmapComponent(BitmapComponent* Component, VoodooEngine* Engine)
@@ -190,17 +174,6 @@ void RemoveInputCallback(InputCallback* Component, VoodooEngine* Engine)
 	Engine->StoredInputCallbacks.erase(std::remove(
 		Engine->StoredInputCallbacks.begin(),
 		Engine->StoredInputCallbacks.end(), Component));
-}
-
-void CloseApp(VoodooEngine* Engine)
-{
-	Engine->EngineRunning = false;
-	Engine->StoredBitmapComponents.clear();
-	Engine->StoredCollisionComponents.clear();
-	Engine->StoredUpdateComponents.clear();
-	Engine->StoredInputCallbacks.clear();
-	Engine->StoredInputs.clear();
-	delete Engine;
 }
 
 void ShiftBitmapToLetter(int LetterID, BitmapComponent* LetterBitmap, VoodooEngine* Engine)
@@ -386,6 +359,11 @@ void RenderUITextsRenderLayer(VoodooEngine* Engine)
 
 void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 {
+	if (!Engine)
+	{
+		return;
+	}
+
 	SEditorAssetList FontAssetPath;
 
 	float OriginPositionY = 100;
@@ -718,16 +696,16 @@ bool HideSystemMouseCursor(UINT Message, LPARAM LParam)
 	}
 }
 
-void Update(VoodooEngine* Engine, float DeltaTime)
+void Update(VoodooEngine* Engine)
 {
+	UpdateFrameRate(Engine);
 	UpdateAppWindow();
 
-	/*
 	if (Engine->EditorMode)
 	{
 		for (int i = 0; i < Engine->StoredEditorUpdateComponents.size(); i++)
 		{
-			Engine->StoredEditorUpdateComponents[i]->Update(DeltaTime);
+			Engine->StoredEditorUpdateComponents[i]->Update(Engine->DeltaTime);
 		}
 	}
 
@@ -735,10 +713,9 @@ void Update(VoodooEngine* Engine, float DeltaTime)
 	{
 		for (int i = 0; i < Engine->StoredUpdateComponents.size(); i++)
 		{
-			Engine->StoredUpdateComponents[i]->Update(DeltaTime);
+			Engine->StoredUpdateComponents[i]->Update(Engine->DeltaTime);
 		}
 	}
-	*/
 }
 
 ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* RenderTarget, HWND HWind)
@@ -1338,9 +1315,54 @@ void InitializeEngine(VoodooEngine* Engine)
 	// Create the text format for the engine UI texts
 	CreateUITextFormat(Engine);
 	
-	// Add stuff here to init
+	QueryPerformanceFrequency(&Engine->TicksPerSecond);
+	QueryPerformanceCounter(&Engine->StartTicks);
 
 	Engine->EngineRunning = true;
+	// TODO: add or statement here if in "Main Menu"
+	if (!Engine->EditorMode)
+	{
+		Engine->GameRunning = true;
+	}
+}
+
+void RenderLevelEditor(VoodooEngine* Engine)
+{
+	if (!Engine->EditorMode)
+	{ 
+		return;
+	}
+
+	RenderBitmaps(Engine->Renderer, Engine->StoredEditorBitmapComponents);
+	RenderBitmaps(Engine->Renderer, Engine->StoredButtonBitmapComponents);
+	RenderBitmaps(Engine->Renderer, Engine->StoredButtonTexts);
+}
+
+void Render(VoodooEngine* Engine)
+{
+	// Only render one background at a time
+	RenderBitmaps(Engine->Renderer, Engine->StoredLevelBackgrounds, 1);
+	// Render all bitmaps (from gameobjects) stored in engine
+	RenderBitmaps(Engine->Renderer, Engine->StoredBitmapComponents, RENDERLAYER_MAXNUM);
+	// Render all collision rects
+	RenderCollisionRectangleMultiple(
+		Engine->Renderer, Engine->StoredCollisionComponents);
+
+	if (Engine->EditorMode)
+	{
+		RenderLevelEditor(Engine);
+	}
+	if (Engine->DebugMode)
+	{
+		RenderCollisionRectangleMultiple(
+			Engine->Renderer, Engine->StoredEditorCollisionComponents);
+		RenderBitmaps(
+			Engine->Renderer, Engine->StoredScreenPrintTexts);
+	}
+	
+	RenderCustomMouseCursor(Engine->Renderer, Engine);
+	
+	RenderUITextsRenderLayer(Engine);
 }
 
 void RunEngine(VoodooEngine* Engine)
@@ -1350,11 +1372,10 @@ void RunEngine(VoodooEngine* Engine)
 		return;
 	}
 
-	// Add deltatime calculation function here
-	Update(Engine, 0);
+	Update(Engine);
 	
 	Engine->Renderer->BeginDraw();
-	Engine->Renderer->Clear({});
-	RenderCustomMouseCursor(Engine->Renderer, Engine);
+	Engine->Renderer->Clear(Engine->ClearScreenColor);
+	Render(Engine);
 	Engine->Renderer->EndDraw();
 }
