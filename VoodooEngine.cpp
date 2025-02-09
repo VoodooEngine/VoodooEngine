@@ -60,15 +60,20 @@ void UpdateAppWindow()
 	MSG MSGMessage;
 	MSGMessage.message = WM_NULL;
 	while (PeekMessage(&MSGMessage, nullptr, 0, 0, PM_REMOVE))
+	{ 
 		DispatchMessage(&MSGMessage);
+	}
 }
 
-bool InputPressed(std::map<int, bool> StoredInputs, int InputToCheck)
+bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck)
 {
 	int KeyToCheck = InputToCheck;
 	auto Iterator = StoredInputs.find(KeyToCheck);
+	
 	if (Iterator != StoredInputs.end())
+	{ 
 		return Iterator->second;
+	}
  
 	return false;
 }
@@ -81,59 +86,17 @@ void BroadcastInput(std::vector<InputCallback*> StoredCallbacks, int Input, bool
 	}
 }
 
-void SendMouseInputBroadcast(VoodooEngine* Engine, int Input, bool Pressed)
-{
-	for (int i = 0; i < Engine->StoredInputCallbacks.size(); i++)
-	{
-		// Override input and pressed type
-		Engine->StoredInputCallbacks[i]->InputBroadcast(Input, Pressed);
-	}
-}
-
-void UpdateMouseInput(VoodooEngine* Engine, UINT Message)
-{
-	if (!Engine)
-	{
-		return;
-	}
-
-	// 1 == Primary mouse input ID
-	// 2 == Secondary mouse input ID
-
-	switch (Message)
-	{
-	// Primary mouse button
-	case WM_LBUTTONDOWN:
-		Engine->Mouse.PrimaryMousePressed = true;
-		SendMouseInputBroadcast(Engine, 1, true);
-		break;
-	case WM_LBUTTONUP:
-		Engine->Mouse.PrimaryMousePressed = false;
-		SendMouseInputBroadcast(Engine, 1, false);
-		break;
-	// Secondary mouse button
-	case WM_RBUTTONDOWN:
-		Engine->Mouse.SecondaryMousePressed = true;
-		SendMouseInputBroadcast(Engine, 2, true);
-		break;
-	case WM_RBUTTONUP:
-		Engine->Mouse.SecondaryMousePressed = false;
-		SendMouseInputBroadcast(Engine, 2, false);
-		break;
-	}
-}
-
 UINT64 VoodooEngineGetTicks(VoodooEngine* Engine)
 {
 	QueryPerformanceCounter(&Engine->CurrentTicks);
-	return (
-		UINT64)(((Engine->CurrentTicks.QuadPart - 
+	return (UINT64)(((Engine->CurrentTicks.QuadPart - 
 		Engine->StartTicks.QuadPart) * 1000) / Engine->TicksPerSecond.QuadPart);
 }
 
 void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
 {
 	Engine->FPS = FPSLimit;
+	Engine->FrameTargetTime = (1000 / Engine->FPS);
 }
 
 void UpdateFrameRate(VoodooEngine* Engine)
@@ -263,6 +226,17 @@ BitmapComponent* CreateLetter(
 	return CreatedLetter;
 }
 
+void SetupDefaultBrushes(VoodooEngine* Engine)
+{
+	Engine->Renderer->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::Black),
+		&Engine->BlackBrush);
+
+	Engine->Renderer->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White),
+		&Engine->WhiteBrush);
+}
+
 void CreateUITextFormat(VoodooEngine* Engine)
 {
 	IDWriteFactory* IDWriteFactory = nullptr;
@@ -281,14 +255,6 @@ void CreateUITextFormat(VoodooEngine* Engine)
 		20.0f * 96.0f / 72.0f,
 		L"en-US",
 		&Engine->TextFormat);
-
-	Engine->Renderer->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::Black),
-		&Engine->BlackBrush);
-
-	Engine->Renderer->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::White),
-		&Engine->WhiteBrush);
 
 	IDWriteFactory->Release();
 }
@@ -394,7 +360,9 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 void ClearScreenPrint(VoodooEngine* Engine)
 {
 	if (Engine->StoredScreenPrintTexts.empty())
+	{
 		return;
+	}
 
 	while (!Engine->StoredScreenPrintTexts.empty())
 	{
@@ -625,7 +593,9 @@ void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
 		Engine->Mouse.MouseBitmap.BitmapParams = SetupBitmapParams(Engine->Mouse.MouseBitmap.Bitmap);
 
 		if (Engine->DebugMode)
+		{ 
 			Engine->Mouse.MouseCollider.RenderCollisionRect = true;
+		}
 	}
 	else
 	{
@@ -640,10 +610,13 @@ void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize)
 	Engine->Mouse.MouseCollider.CollisionRect = ColliderSize;
 }
 
-void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation)
+void SetCustomMouseCursorLocation(VoodooEngine* Engine, SVector NewLocation)
 {
-	if (!Engine || !Engine->EngineRunning)
+	if (!Engine || 
+		!Engine->EngineRunning)
+	{
 		return;
+	}
 
 	Engine->Mouse.Location = NewLocation;
 
@@ -654,21 +627,15 @@ void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation)
 		Engine->Mouse.MouseBitmap.ComponentLocation.Y + Engine->Mouse.MouseCollider.CollisionRectOffset.Y};
 }
 
-void UpdateCustomMouseCursor(VoodooEngine* Engine)
+void UpdateCustomMouseCursorLocation(VoodooEngine* Engine)
 {
-	if (GetMessagePos())
-	{
-		POINT MousePosition;
-		if (GetCursorPos(&MousePosition))
-		{
-			SVector NewMousePos = { 0, 0 };
-			NewMousePos.X = MousePosition.x;
-			NewMousePos.Y = MousePosition.y;
-
-			if (Engine)
-				UpdateMouseLocation(Engine, NewMousePos);
-		}
-	}
+	POINT MousePositionPoint;
+	GetCursorPos(&MousePositionPoint);
+	SVector MousePosition = { 0, 0 };
+	MousePosition.X = MousePositionPoint.x;
+	MousePosition.Y = MousePositionPoint.y;
+	
+	SetCustomMouseCursorLocation(Engine, MousePosition);
 }
 
 void SetMouseState(bool Show, VoodooEngine* Engine)
@@ -685,21 +652,11 @@ void SetMouseState(bool Show, VoodooEngine* Engine)
 	}
 }
 
-bool HideSystemMouseCursor(UINT Message, LPARAM LParam)
-{
-	// Hides system mouse cursor since engine is using custom icon for cursor
-	if (Message == WM_SETCURSOR &&
-		LOWORD(LParam) == HTCLIENT)
-	{
-		SetCursor(NULL);
-		return TRUE;
-	}
-}
-
 void Update(VoodooEngine* Engine)
 {
 	UpdateFrameRate(Engine);
 	UpdateAppWindow();
+	UpdateCustomMouseCursorLocation(Engine);
 
 	if (Engine->EditorMode)
 	{
@@ -965,14 +922,25 @@ void RenderBitmaps(ID2D1HwndRenderTarget* Renderer,
 
 void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine)
 {
-	// Render mouse collider as fallback if no custom cursor image file is found
-	if (Engine->Mouse.MouseBitmap.Bitmap == nullptr)
+	// Render mouse collider as fallback if no custom cursor image file is found or in debug mode
+	if (Engine->Mouse.MouseBitmap.Bitmap == nullptr || 
+		Engine->DebugMode)
 	{
-		RenderCollisionRectangle(Renderer, &Engine->Mouse.MouseCollider);
-		return;
+		const D2D1_COLOR_F Color = { 255, 255, 255, 255 };
+
+		D2D1_RECT_F Rect = D2D1::RectF(
+			Engine->Mouse.MouseCollider.ComponentLocation.X,
+			Engine->Mouse.MouseCollider.ComponentLocation.Y,
+			Engine->Mouse.MouseCollider.ComponentLocation.X +
+			Engine->Mouse.MouseCollider.CollisionRect.X,
+			Engine->Mouse.MouseCollider.ComponentLocation.Y +
+			Engine->Mouse.MouseCollider.CollisionRect.Y);
+
+		Renderer->DrawRectangle(Rect, Engine->WhiteBrush);
 	}
 	
-	if (Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame)
+	if (Engine->Mouse.MouseBitmap.Bitmap == nullptr ||
+		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame)
 	{
 		return;
 	}
@@ -1062,42 +1030,16 @@ void BroadcastCollision(Object* CallbackOwner, CollisionComponent* Sender, Colli
 	}
 }
 
-void RenderCollisionRectangle(ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectangleToRender)
-{
-	int Alpha = 255;
-	const D2D1_COLOR_F Color =
-	{CollisionRectangleToRender->CollisionRectColor.R,
-	CollisionRectangleToRender->CollisionRectColor.G,
-	CollisionRectangleToRender->CollisionRectColor.B, Alpha};
-
-	ID2D1SolidColorBrush* Brush;
-	Renderer->CreateSolidColorBrush(Color, &Brush);
-
-	Renderer->DrawRectangle(
-		D2D1::RectF(
-			CollisionRectangleToRender->ComponentLocation.X,
-			CollisionRectangleToRender->ComponentLocation.Y,
-			CollisionRectangleToRender->ComponentLocation.X +
-			CollisionRectangleToRender->CollisionRect.X,
-			CollisionRectangleToRender->ComponentLocation.Y +
-			CollisionRectangleToRender->CollisionRect.Y),
-			Brush);
-
-	Brush->Release();
-}
-
-void RenderCollisionRectangleMultiple(ID2D1HwndRenderTarget* Renderer,
+void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 	std::vector<CollisionComponent*> CollisionRectsToRender)
 {
 	for (int i = 0; i < CollisionRectsToRender.size(); i++)
 	{
-		// Go to next if collision is set to none
-		if (CollisionRectsToRender[i]->NoCollision)
-			continue;
-
 		// Go to next if set to not render collision rect
 		if (!CollisionRectsToRender[i]->RenderCollisionRect)
+		{
 			continue;
+		}
 
 		int Alpha = 255;
 		const D2D1_COLOR_F Color = 
@@ -1108,15 +1050,24 @@ void RenderCollisionRectangleMultiple(ID2D1HwndRenderTarget* Renderer,
 		ID2D1SolidColorBrush* Brush;
 		Renderer->CreateSolidColorBrush(Color, &Brush);
 		
-		Renderer->DrawRectangle(
-			D2D1::RectF(
+		Brush->SetOpacity(CollisionRectsToRender[i]->Opacity);
+
+		D2D1_RECT_F Rect = D2D1::RectF(
 			CollisionRectsToRender[i]->ComponentLocation.X,
 			CollisionRectsToRender[i]->ComponentLocation.Y,
 			CollisionRectsToRender[i]->ComponentLocation.X +
 			CollisionRectsToRender[i]->CollisionRect.X,
 			CollisionRectsToRender[i]->ComponentLocation.Y +
-			CollisionRectsToRender[i]->CollisionRect.Y),
-			Brush);
+			CollisionRectsToRender[i]->CollisionRect.Y);
+
+		if (CollisionRectsToRender[i]->DrawFilledRectangle)
+		{
+			Renderer->FillRectangle(Rect, Brush);
+		}
+		else
+		{
+			Renderer->DrawRectangle(Rect, Brush);
+		}
 
 		Brush->Release();
 	}
@@ -1312,6 +1263,10 @@ void InitializeEngine(VoodooEngine* Engine)
 	// Create engine mouse cursor
 	CreateMouse(Engine, { 10, 10 });
 
+	// Setup default brushes used by various objects that needs a brush 
+	// (so we don't create new brushes for every object)
+	SetupDefaultBrushes(Engine);
+
 	// Create the text format for the engine UI texts
 	CreateUITextFormat(Engine);
 	
@@ -1345,7 +1300,7 @@ void Render(VoodooEngine* Engine)
 	// Render all bitmaps (from gameobjects) stored in engine
 	RenderBitmaps(Engine->Renderer, Engine->StoredBitmapComponents, RENDERLAYER_MAXNUM);
 	// Render all collision rects
-	RenderCollisionRectangleMultiple(
+	RenderCollisionRectangles(
 		Engine->Renderer, Engine->StoredCollisionComponents);
 
 	if (Engine->EditorMode)
@@ -1354,7 +1309,7 @@ void Render(VoodooEngine* Engine)
 	}
 	if (Engine->DebugMode)
 	{
-		RenderCollisionRectangleMultiple(
+		RenderCollisionRectangles(
 			Engine->Renderer, Engine->StoredEditorCollisionComponents);
 		RenderBitmaps(
 			Engine->Renderer, Engine->StoredScreenPrintTexts);

@@ -88,7 +88,7 @@
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_RENDERLAYERS -10
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_VIEWMODE -11
 
-// Window
+// Application window related
 //---------------------
 // Window parameters information i.e. title name of application, window resolution, fullscreen etc.  
 struct SWindowParams
@@ -137,7 +137,7 @@ public:
 	virtual void InputBroadcast(int Input, bool Pressed) = 0;
 };
 // Check if input is being pressed/released, returns (not pressed) false as default if no input is found
-extern "C" VOODOOENGINE_API bool InputPressed(std::map<int, bool> StoredInputs, int InputToCheck);
+extern "C" VOODOOENGINE_API bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck);
 // Sends input broadcast to all listeners (contained by the vector) whenever an input is pressed
 // Note that input ID of primary mouse is "1" and for secondary mouse "2", 
 // you can still override them and use mouse bools pressed instead from the engine class 
@@ -175,7 +175,7 @@ struct SColor
 class TransformComponent
 {
 public:
-	SVector ComponentLocation = { 0, 0 };
+	SVector ComponentLocation;
 };
 //---------------------
 
@@ -288,11 +288,13 @@ public:
 	bool NoCollision = false;
 	bool IsOverlapped = false;
 	bool RenderCollisionRect = false;
+	bool DrawFilledRectangle = false;
+	float Opacity = 1;
 	int CollisionTag = 0;
 	std::vector<int> CollisionTagsToIgnore;
-	SColor CollisionRectColor = { 255, 255, 255 };
-	SVector CollisionRect = { 0, 0 };
-	SVector CollisionRectOffset = { 0, 0 };
+	SColor CollisionRectColor;
+	SVector CollisionRect;
+	SVector CollisionRectOffset;
 	Object* Owner = nullptr;
 };
 extern "C" VOODOOENGINE_API bool IsCollisionDetected(
@@ -310,10 +312,8 @@ extern "C" VOODOOENGINE_API void RenderBitmapByLayer(
 extern "C" VOODOOENGINE_API void RenderBitmaps(
 	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> BitmapsToRender, 
 	int MaxNumRenderLayers = 0);
-extern "C" VOODOOENGINE_API void RenderCollisionRectangleMultiple(
+extern "C" VOODOOENGINE_API void RenderCollisionRectangles(
 	ID2D1HwndRenderTarget* Renderer, std::vector<CollisionComponent*> CollisionRectsToRender);
-extern "C" VOODOOENGINE_API void RenderCollisionRectangle(
-	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectangleToRender);
 //---------------------
 
 // Update component inherited by all objects that needs to update each frame
@@ -462,6 +462,10 @@ public:
 	ID2D1HwndRenderTarget* Renderer = nullptr;
 	D2D1_COLOR_F ClearScreenColor = { 0, 0, 0 };
 
+	// Resolution of the screen
+	int ScreenWidthDefault = 1920;
+	int ScreenHeightDefault = 1080;
+
 	// Frame rate related
 	LARGE_INTEGER StartTicks;
 	LARGE_INTEGER TicksPerSecond;
@@ -497,10 +501,15 @@ public:
 
 	// Default collision rect color for editor mode assets
 	SColor EditorCollisionRectColor = { 200, 0, 255 };
-	// Green color
-	SColor ColorGreen = { 0, 128, 0 };
-	// Red Color
-	SColor ColorRed = { 136, 0, 0 };
+	
+	// Color options
+	SColor ColorBlack = { 0, 0, 0 };
+	SColor ColorWhite = { 255, 255, 255 };
+	SColor ColorRed = { 255, 0, 0 };
+	SColor ColorGreen = { 0, 255, 0 };
+	SColor ColorBlue = { 0, 0, 255 };
+	SColor ColorCyan = { 0, 255, 255 };
+	SColor ColorYellow = { 255, 255, 0 };
 
 	// Only used in level editor mode
 	SVector AssetButtonThumbnailDimensions = { 90, 90 };
@@ -526,17 +535,40 @@ public:
 	// This determines the letter space for any texts created
 	int LetterSpace = 12;
 
+	static void UpdateMouseInput(VoodooEngine* Engine, UINT Message)
+	{
+		switch (Message)
+		{
+			// Primary mouse button
+		case WM_LBUTTONDOWN:
+			Engine->Mouse.PrimaryMousePressed = true;
+			break;
+		case WM_LBUTTONUP:
+			Engine->Mouse.PrimaryMousePressed = false;
+			break;
+			// Secondary mouse button
+		case WM_RBUTTONDOWN:
+			Engine->Mouse.SecondaryMousePressed = true;
+			break;
+		case WM_RBUTTONUP:
+			Engine->Mouse.SecondaryMousePressed = false;
+			break;
+		}
+	};
+
 	inline static LRESULT CALLBACK WindowsProcedure(
 		HWND HWind, UINT Message, WPARAM WParam, LPARAM LParam)
 	{
 		// Don't use engine if not running 
 		if (!VoodooEngine::Engine->EngineRunning)
 		{
-			return  DefWindowProc(HWind, Message, WParam, LParam);
+			return DefWindowProc(HWind, Message, WParam, LParam);
 		}
 
-		// Stop running engine if pressed "X" icon in top right corner
-		if (Message == WM_DESTROY)
+		// Stop running engine if pressed "X" icon in top right corner or escape key
+		if (Message == WM_DESTROY || 
+			Message == WM_KEYDOWN &&
+			WParam == VK_ESCAPE)
 		{
 			VoodooEngine::Engine->EngineRunning = false;
 		}
@@ -545,6 +577,16 @@ public:
 		VoodooEngine::Engine->WinProcParams.Message = Message;
 		VoodooEngine::Engine->WinProcParams.WParam = WParam;
 		VoodooEngine::Engine->WinProcParams.LParam = LParam;
+
+		UpdateMouseInput(VoodooEngine::Engine, Message);
+
+		// Hides system mouse cursor since engine is using custom icon for cursor
+		if (Message == WM_SETCURSOR &&
+			LOWORD(LParam) == HTCLIENT)
+		{
+			SetCursor(NULL);
+			return TRUE;
+		}
 
 		return DefWindowProc(HWind, Message, WParam, LParam);
 	};
@@ -665,15 +707,21 @@ public:
 		std::vector<GameObject*>().swap(StoredGameObjects);
 	};
 };
-extern "C" VOODOOENGINE_API void UpdateMouseInput(VoodooEngine* Engine, UINT Message);
+
+// Setup default brushes used by various objects that needs a brush 
+// (so we don't create new brushes for every object) 
+void SetupDefaultBrushes(VoodooEngine* Engine);
+
+// Custom mouse cursor related
+//---------------------
 extern "C" VOODOOENGINE_API void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize);
 extern "C" VOODOOENGINE_API void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize);
-extern "C" VOODOOENGINE_API void UpdateMouseLocation(VoodooEngine* Engine, SVector NewLocation);
-extern "C" VOODOOENGINE_API void UpdateCustomMouseCursor(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void SetMouseState(bool Show, VoodooEngine* Engine);
-extern "C" VOODOOENGINE_API bool HideSystemMouseCursor(UINT Message, LPARAM LParam);
-extern "C" VOODOOENGINE_API void RenderCustomMouseCursor(
-	ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine);
+void SetCustomMouseCursorLocation(VoodooEngine* Engine, SVector NewLocation);
+void UpdateCustomMouseCursorLocation(VoodooEngine* Engine);
+void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine);
+//---------------------
+
 extern "C" VOODOOENGINE_API Button* CreateButton(
 	VoodooEngine* Engine, 
 	Button* ButtonToCreate, 
