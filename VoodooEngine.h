@@ -127,30 +127,33 @@ struct UITextParameters
 
 // Input
 //---------------------
-// Any class that inherit "InputCallback" class, 
-// will be able to recieve a broadcast of which input was pressed/released
-class InputCallback
+// Input interface with input type and if pressed/not pressed, input type ID is set by specific game
+class IInput
 {
 public:
-	// Pure virtual function since there is no reason to make it optional,
-	// if a class inherit "InputCallback" then it will want to listen to the input broadcast
-	virtual void InputBroadcast(int Input, bool Pressed) = 0;
+	virtual void OnInputBroadcast(int Input, bool Pressed){};
 };
-// Check if input is being pressed/released, returns (not pressed) false as default if no input is found
+// Check if specfific input is being pressed/released, 
+// returns false (not pressed) as default if no input is found
 extern "C" VOODOOENGINE_API bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck);
-// Sends input broadcast to all listeners (contained by the vector) whenever an input is pressed
-// Note that input ID of primary mouse is "1" and for secondary mouse "2", 
-// you can still override them and use mouse bools pressed instead from the engine class 
+// Sends input broadcast to all listeners whenever an input is pressed, 
+// input type ID is set by specific game
 extern "C" VOODOOENGINE_API void BroadcastInput(
-	std::vector<InputCallback*> StoredCallbacks, int Input, bool Pressed);
+	std::vector<IInput*> StoredCallbacks, int Input, bool Pressed);
 //---------------------
 
-// Generic event interface with no parameters, 
-// connect the function "OnEventBroadcasted" to the class that inherit this interface
+// Generic event interface with no parameters 
 class IEvent
 {
 public:
-	virtual void OnEventBroadcasted(){};
+	virtual void OnEventBroadcast(){};
+};
+
+// Interface used for when certain objects wants to handle custom render logic
+class IRender
+{
+public:
+	virtual void OnRenderBroadcast(ID2D1HwndRenderTarget* Renderer){};
 };
 
 // Utility
@@ -164,9 +167,10 @@ struct SVector
 // Color (RGB)
 struct SColor
 {
-	int R = 255;
-	int G = 255;
-	int B = 255;
+	// Default white color
+	float R = 1;
+	float G = 1;
+	float B = 1;
 };
 //---------------------
 
@@ -314,6 +318,10 @@ extern "C" VOODOOENGINE_API void RenderBitmaps(
 	int MaxNumRenderLayers = 0);
 extern "C" VOODOOENGINE_API void RenderCollisionRectangles(
 	ID2D1HwndRenderTarget* Renderer, std::vector<CollisionComponent*> CollisionRectsToRender);
+extern "C" VOODOOENGINE_API void RenderCollisionRectangle(
+	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectToRender);
+void AssignCollisionRectangleToRender(
+	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectToRender);
 //---------------------
 
 // Update component inherited by all objects that needs to update each frame
@@ -482,13 +490,16 @@ public:
 	char FileName[100];
 	void(*AssetLoadFunctionPointer)(int, SVector);
 
+	// Interface objects
+	std::vector<IRender*> InterfaceObjects_Render;
+
 	// Stored objects
 	std::vector<UpdateComponent*> StoredUpdateComponents;
 	std::vector<CollisionComponent*> StoredCollisionComponents;
 	std::vector<BitmapComponent*> StoredBitmapComponents;
 	std::vector<BitmapComponent*> StoredLevelBackgrounds;
 	std::map<int, bool> StoredInputs;
-	std::vector<InputCallback*> StoredInputCallbacks;
+	std::vector<IInput*> StoredInputCallbacks;
 	std::vector<GameStateCallback*> StoredGameStateCallbacks;
 	std::vector<GameObject*> StoredGameObjects;
 	std::map<int, SAssetParameters> StoredGameObjectIDs;
@@ -535,6 +546,39 @@ public:
 	// This determines the letter space for any texts created
 	int LetterSpace = 12;
 
+	// Clear all debug text from screen
+	static void ClearScreenPrint(VoodooEngine* Engine)
+	{
+		if (Engine->StoredScreenPrintTexts.empty())
+		{
+			return;
+		}
+
+		while (!Engine->StoredScreenPrintTexts.empty())
+		{
+			for (int i = 0; i < Engine->StoredScreenPrintTexts.size(); i++)
+			{
+				BitmapComponent* BitmapPointer = Engine->StoredScreenPrintTexts[i];
+				Engine->StoredScreenPrintTexts.erase(std::remove(
+					Engine->StoredScreenPrintTexts.begin(),
+					Engine->StoredScreenPrintTexts.end(), BitmapPointer));
+				BitmapPointer->Bitmap->Release();
+				BitmapPointer->Bitmap = nullptr;
+				delete BitmapPointer;
+			}
+		}
+
+		Engine->ScreenPrintTextColumnsPrinted = 0;
+	}
+
+	static void CallMouseInputCallback(int MouseButton, bool Pressed)
+	{
+		for (int i = 0; i < VoodooEngine::Engine->StoredInputCallbacks.size(); i++)
+		{
+			VoodooEngine::Engine->StoredInputCallbacks[i]->OnInputBroadcast(MouseButton, Pressed);
+		}
+	}
+
 	static void UpdateMouseInput(VoodooEngine* Engine, UINT Message)
 	{
 		switch (Message)
@@ -542,16 +586,20 @@ public:
 			// Primary mouse button
 		case WM_LBUTTONDOWN:
 			Engine->Mouse.PrimaryMousePressed = true;
+			CallMouseInputCallback(WM_LBUTTONDOWN, true);
 			break;
 		case WM_LBUTTONUP:
 			Engine->Mouse.PrimaryMousePressed = false;
+			CallMouseInputCallback(WM_LBUTTONUP, false);
 			break;
 			// Secondary mouse button
 		case WM_RBUTTONDOWN:
 			Engine->Mouse.SecondaryMousePressed = true;
+			CallMouseInputCallback(WM_RBUTTONDOWN, true);
 			break;
 		case WM_RBUTTONUP:
 			Engine->Mouse.SecondaryMousePressed = false;
+			CallMouseInputCallback(WM_RBUTTONUP, false);
 			break;
 		}
 	};
@@ -571,6 +619,14 @@ public:
 			WParam == VK_ESCAPE)
 		{
 			VoodooEngine::Engine->EngineRunning = false;
+		}
+
+		// Clear screen print if visible (used for debugging)
+		if (VoodooEngine::Engine->DebugMode &&
+			Message == WM_KEYDOWN &&
+			WParam == VK_DELETE)
+		{
+			ClearScreenPrint(VoodooEngine::Engine);
 		}
 
 		VoodooEngine::Engine->WinProcParams.HWind = HWind;
@@ -776,7 +832,7 @@ extern "C" VOODOOENGINE_API void RemoveCollisionComponent(CollisionComponent* Co
 // Remove update component from "StoredUpdateComponents"
 extern "C" VOODOOENGINE_API void RemoveUpdateComponent(UpdateComponent* Component, VoodooEngine* Engine);
 // Remove input callback component from "StoredInputCallbacks"
-extern "C" VOODOOENGINE_API void RemoveInputCallback(InputCallback* Component, VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void RemoveInputCallback(IInput* Component, VoodooEngine* Engine);
 
 // Create the text format to be used by all direct write IU text for the remainder of the program
 extern "C" VOODOOENGINE_API void CreateUITextFormat(VoodooEngine* Engine);
@@ -784,13 +840,11 @@ extern "C" VOODOOENGINE_API void CreateUITextFormat(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void RenderUITextsRenderLayer(VoodooEngine* Engine);
 // Print debug text to screen
 extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
-// Clear all debug text from screen
-extern "C" VOODOOENGINE_API void ClearScreenPrint(VoodooEngine* Engine);
 //---------------------
 
 // Gizmo
 //---------------------
-class Gizmo : public Object, public UpdateComponent, public InputCallback
+class Gizmo : public Object, public UpdateComponent, public IInput
 {
 public:
 	VoodooEngine* Engine = nullptr;
@@ -902,7 +956,7 @@ public:
 
 			for (int i = 0; i < MoveGameObjectEventListeners.size(); i++)
 			{
-				MoveGameObjectEventListeners[i]->OnEventBroadcasted();
+				MoveGameObjectEventListeners[i]->OnEventBroadcast();
 			}
 		}
 	};
@@ -1129,7 +1183,7 @@ public:
 		SelectedGameObject = nullptr;
 	};
 
-	void InputBroadcast(int Input, bool Pressed)
+	void OnInputBroadcast(int Input, bool Pressed)
 	{
 		if (Engine->GameRunning)
 		{
@@ -1190,7 +1244,7 @@ extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(char* FileName, VoodooE
 
 // Level Editor
 //-------------------------------------------
-class LevelEditor : public Object, public UpdateComponent, public InputCallback, public IEvent
+class LevelEditor : public Object, public UpdateComponent, public IInput, public IEvent
 {
 
 #define BUTTON_LOC_X_OPENLEVEL 20
@@ -1306,7 +1360,7 @@ public:
 	EMenuType CurrentMenuTypeActivated = EMenuType::None;
 
 	// This is called whenever a game object is moved by the gizmo
-	void OnEventBroadcasted()
+	void OnEventBroadcast()
 	{
 		if (LevelEditorVisible)
 		{
@@ -1758,7 +1812,7 @@ public:
 			break;
 		}
 	};
-	void InputBroadcast(int Input, bool Pressed)
+	void OnInputBroadcast(int Input, bool Pressed)
 	{
 		if (Input == VK_TAB)
 		{

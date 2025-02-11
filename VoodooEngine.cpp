@@ -78,11 +78,11 @@ bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck)
 	return false;
 }
 
-void BroadcastInput(std::vector<InputCallback*> StoredCallbacks, int Input, bool Pressed)
+void BroadcastInput(std::vector<IInput*> StoredCallbacks, int Input, bool Pressed)
 {
 	for (int i = 0; i < StoredCallbacks.size(); i++)
 	{
-		StoredCallbacks[i]->InputBroadcast(Input, Pressed);
+		StoredCallbacks[i]->OnInputBroadcast(Input, Pressed);
 	}
 }
 
@@ -132,7 +132,7 @@ void RemoveUpdateComponent(UpdateComponent* Component, VoodooEngine* Engine)
 		Engine->StoredUpdateComponents.end(), Component));
 }
 
-void RemoveInputCallback(InputCallback* Component, VoodooEngine* Engine)
+void RemoveInputCallback(IInput* Component, VoodooEngine* Engine)
 {
 	Engine->StoredInputCallbacks.erase(std::remove(
 		Engine->StoredInputCallbacks.begin(),
@@ -355,28 +355,6 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 			Engine->StoredScreenPrintTexts.push_back(NewLetter);
 		}
 	}
-}
-
-void ClearScreenPrint(VoodooEngine* Engine)
-{
-	if (Engine->StoredScreenPrintTexts.empty())
-	{
-		return;
-	}
-
-	while (!Engine->StoredScreenPrintTexts.empty())
-	{
-		for (int i = 0; i < Engine->StoredScreenPrintTexts.size(); i++)
-		{
-			BitmapComponent* BitmapPointer = Engine->StoredScreenPrintTexts[i];
-			Engine->StoredScreenPrintTexts.erase(std::remove(
-				Engine->StoredScreenPrintTexts.begin(),
-				Engine->StoredScreenPrintTexts.end(), BitmapPointer));
-			delete BitmapPointer;
-		}
-	}
-
-	Engine->ScreenPrintTextColumnsPrinted = 0;
 }
 
 Button* CreateButton(
@@ -1030,6 +1008,40 @@ void BroadcastCollision(Object* CallbackOwner, CollisionComponent* Sender, Colli
 	}
 }
 
+void AssignCollisionRectangleToRender(
+	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectToRender)
+{
+	// "1" is alpha value
+	const D2D1_COLOR_F Color =
+		{ CollisionRectToRender->CollisionRectColor.R,
+		CollisionRectToRender->CollisionRectColor.G,
+		CollisionRectToRender->CollisionRectColor.B, 1 };
+
+	ID2D1SolidColorBrush* Brush;
+	Renderer->CreateSolidColorBrush(Color, &Brush);
+
+	Brush->SetOpacity(CollisionRectToRender->Opacity);
+
+	D2D1_RECT_F Rect = D2D1::RectF(
+		CollisionRectToRender->ComponentLocation.X,
+		CollisionRectToRender->ComponentLocation.Y,
+		CollisionRectToRender->ComponentLocation.X +
+		CollisionRectToRender->CollisionRect.X,
+		CollisionRectToRender->ComponentLocation.Y +
+		CollisionRectToRender->CollisionRect.Y);
+
+	if (CollisionRectToRender->DrawFilledRectangle)
+	{
+		Renderer->FillRectangle(Rect, Brush);
+	}
+	else
+	{
+		Renderer->DrawRectangle(Rect, Brush);
+	}
+
+	Brush->Release();
+}
+
 void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 	std::vector<CollisionComponent*> CollisionRectsToRender)
 {
@@ -1041,36 +1053,14 @@ void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 			continue;
 		}
 
-		int Alpha = 255;
-		const D2D1_COLOR_F Color = 
-			{CollisionRectsToRender[i]->CollisionRectColor.R,
-			CollisionRectsToRender[i]->CollisionRectColor.G,
-			CollisionRectsToRender[i]->CollisionRectColor.B, Alpha};
-
-		ID2D1SolidColorBrush* Brush;
-		Renderer->CreateSolidColorBrush(Color, &Brush);
-		
-		Brush->SetOpacity(CollisionRectsToRender[i]->Opacity);
-
-		D2D1_RECT_F Rect = D2D1::RectF(
-			CollisionRectsToRender[i]->ComponentLocation.X,
-			CollisionRectsToRender[i]->ComponentLocation.Y,
-			CollisionRectsToRender[i]->ComponentLocation.X +
-			CollisionRectsToRender[i]->CollisionRect.X,
-			CollisionRectsToRender[i]->ComponentLocation.Y +
-			CollisionRectsToRender[i]->CollisionRect.Y);
-
-		if (CollisionRectsToRender[i]->DrawFilledRectangle)
-		{
-			Renderer->FillRectangle(Rect, Brush);
-		}
-		else
-		{
-			Renderer->DrawRectangle(Rect, Brush);
-		}
-
-		Brush->Release();
+		AssignCollisionRectangleToRender(Renderer, CollisionRectsToRender[i]);
 	}
+}
+
+void RenderCollisionRectangle(ID2D1HwndRenderTarget* Renderer,
+	CollisionComponent* CollisionRectToRender)
+{
+	AssignCollisionRectangleToRender(Renderer, CollisionRectToRender);
 }
 
 SVector GetObjectLocation(Object* Object)
@@ -1261,7 +1251,7 @@ void InitializeEngine(VoodooEngine* Engine)
 	Engine->EditorMode = SetEditorMode();
 
 	// Create engine mouse cursor
-	CreateMouse(Engine, { 10, 10 });
+	CreateMouse(Engine, { 6, 6 });
 
 	// Setup default brushes used by various objects that needs a brush 
 	// (so we don't create new brushes for every object)
@@ -1302,6 +1292,12 @@ void Render(VoodooEngine* Engine)
 	// Render all collision rects
 	RenderCollisionRectangles(
 		Engine->Renderer, Engine->StoredCollisionComponents);
+
+	// Call render interface to all inherited objects
+	for (int i = 0; i < Engine->InterfaceObjects_Render.size(); i++)
+	{
+		Engine->InterfaceObjects_Render[i]->OnRenderBroadcast(Engine->Renderer);
+	}
 
 	if (Engine->EditorMode)
 	{
