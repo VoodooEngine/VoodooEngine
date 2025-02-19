@@ -218,7 +218,7 @@ BitmapComponent* CreateLetter(
 	SVector LetterLocation, const wchar_t* Font)
 {
 	BitmapComponent* CreatedLetter = new BitmapComponent();
-	CreatedLetter->Bitmap = SetBitmap(Engine->Renderer, Font);
+	CreatedLetter->Bitmap = SetupBitmap(Engine->Renderer, Font);
 	CreatedLetter->BitmapParams = SetupBitmapParams(CreatedLetter->Bitmap);
 	CreatedLetter->ComponentLocation = LetterLocation;
 	AssignLetterShiftByID(LetterString, CreatedLetter, Engine);
@@ -375,7 +375,7 @@ Button* CreateButton(
 
 	// Create button bitmap and setup bitmap parameters
 	ButtonToCreate->ButtonBitmap.Bitmap = 
-		SetBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
+		SetupBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
 	ButtonToCreate->ButtonBitmap.BitmapParams = SetupBitmapParams(ButtonToCreate->ButtonBitmap.Bitmap);
 	ButtonToCreate->ButtonBitmap.ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;	
 
@@ -409,7 +409,7 @@ Button* CreateButton(
 	if (ButtonType == AssetButtonThumbnail)
 	{
 		ButtonToCreate->AdditionalBackgroundBitmap.Bitmap =
-			SetBitmap(Engine->Renderer, L"EngineContent/LevelEditor/AssetButtonBase.png");
+			SetupBitmap(Engine->Renderer, L"EngineContent/LevelEditor/AssetButtonBase.png");
 		ButtonToCreate->AdditionalBackgroundBitmap.BitmapParams = 
 			SetupBitmapParams(ButtonToCreate->AdditionalBackgroundBitmap.Bitmap);
 		ButtonToCreate->AdditionalBackgroundBitmap.ComponentLocation = 
@@ -562,7 +562,7 @@ void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
 	SetMouseColliderSize(Engine, MouseColliderSize);
 	Engine->StoredEditorCollisionComponents.push_back(&Engine->Mouse.MouseCollider);
 
-	Engine->Mouse.MouseBitmap.Bitmap = SetBitmap(
+	Engine->Mouse.MouseBitmap.Bitmap = SetupBitmap(
 		Engine->Renderer, L"EngineContent/Cursor/CustomMouseCursor.png");
 
 	// Setup custom mouse cursor bitmap if found, otherwise render mouse collider instead
@@ -653,7 +653,7 @@ void Update(VoodooEngine* Engine)
 	}
 }
 
-ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* RenderTarget, HWND HWind)
+ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* Renderer, HWND HWind)
 {
 	ID2D1Factory* Factory = nullptr;
 	HRESULT Result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &Factory);
@@ -666,15 +666,24 @@ ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* RenderTarget, HWND H
 		D2D1::RenderTargetProperties(),
 		D2D1::HwndRenderTargetProperties(
 		HWind, D2D1::SizeU(WinRect.right, WinRect.bottom)),
-		&RenderTarget);
+		&Renderer);
 
-	return RenderTarget;
+	Factory->Release();
+
+	return Renderer;
 }
 
-ID2D1Bitmap* SetBitmap(ID2D1HwndRenderTarget* RenderTarget, 
-	const wchar_t* FileName, bool Flip)
+ID2D1Bitmap* BitmapCreationSetup(
+	ID2D1HwndRenderTarget* Renderer, const wchar_t* FileName, ID2D1Bitmap* BitmapToCreate, bool Flip)
 {
-	ID2D1Bitmap* NewBitmap = nullptr;
+	// If bitmap is already created, 
+	// then release previous bitmap to avoid memory leak before making it nullptr
+	if (BitmapToCreate)
+	{
+		BitmapToCreate->Release();
+		BitmapToCreate = nullptr;
+	}
+
 	HRESULT Result;
 
 	// Create Wic factory
@@ -706,7 +715,7 @@ ID2D1Bitmap* SetBitmap(ID2D1HwndRenderTarget* RenderTarget,
 	IWICFormatConverter* WicConverter = nullptr;
 	Result = WicFactory->CreateFormatConverter(&WicConverter);
 
-	// If flip is true, then flip the image
+	// Flip image if true, otherwise go with default image
 	if (Flip)
 	{
 		// Setup flip rotator
@@ -738,22 +747,35 @@ ID2D1Bitmap* SetBitmap(ID2D1HwndRenderTarget* RenderTarget,
 			WICBitmapPaletteTypeCustom);
 	}
 
-	RenderTarget->CreateBitmapFromWicBitmap(
-		WicConverter, nullptr, &NewBitmap);
-	
+	Renderer->CreateBitmapFromWicBitmap(
+		WicConverter, nullptr, &BitmapToCreate);
+
 	if (WicFactory)
 		WicFactory->Release();
-	
+
 	if (Decoder)
 		Decoder->Release();
-	
+
 	if (DecoderFrame)
 		DecoderFrame->Release();
-	
+
 	if (WicConverter)
 		WicConverter->Release();
 
-	return NewBitmap;
+	return BitmapToCreate;
+}
+
+void FlipBitmap(
+	ID2D1HwndRenderTarget* Renderer, 
+	const wchar_t* FileName, ID2D1Bitmap* BitmapToFlip, bool Flip)
+{
+	BitmapCreationSetup(Renderer, FileName, BitmapToFlip, Flip);
+}
+
+ID2D1Bitmap* SetupBitmap(
+	ID2D1HwndRenderTarget* Renderer, const wchar_t* FileName)
+{
+	return BitmapCreationSetup(Renderer, FileName, nullptr);
 }
 
 SBitmapParameters SetupBitmapParams(ID2D1Bitmap* BitmapToSetup)
@@ -1011,6 +1033,11 @@ void BroadcastCollision(Object* CallbackOwner, CollisionComponent* Sender, Colli
 void AssignCollisionRectangleToRender(
 	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectToRender)
 {
+	if (!CollisionRectToRender->RenderCollisionRect)
+	{
+		return;
+	}
+
 	// "1" is alpha value
 	const D2D1_COLOR_F Color =
 		{ CollisionRectToRender->CollisionRectColor.R,
@@ -1047,12 +1074,6 @@ void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 {
 	for (int i = 0; i < CollisionRectsToRender.size(); i++)
 	{
-		// Go to next if set to not render collision rect
-		if (!CollisionRectsToRender[i]->RenderCollisionRect)
-		{
-			continue;
-		}
-
 		AssignCollisionRectangleToRender(Renderer, CollisionRectsToRender[i]);
 	}
 }

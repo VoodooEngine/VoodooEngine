@@ -47,6 +47,7 @@
 // Direct2D API
 #include <d2d1.h>
 #include <d2d1_1.h>
+#include <d2d1_3.h>
 #pragma comment(lib, "d2d1.lib")
 
 // DirectWrite API
@@ -202,18 +203,32 @@ public:
 	ID2D1Bitmap* Bitmap = nullptr;
 	SBitmapParameters BitmapParams = {};
 };
-// Set desired bitmap image, 
-// if you want to flip an image e.g. for player/enemy movement
+
+// Private function only used by "SetupBitmap" and "FlipBitmap"
+ID2D1Bitmap* BitmapCreationSetup(
+	ID2D1HwndRenderTarget* Renderer, 
+	const wchar_t* FileName, ID2D1Bitmap* BitmapToCreate, bool Flip = false);
+
+// If you want to flip an image e.g. for player/enemy movement 
+// (if set to false then it goes to default) 
+extern "C" VOODOOENGINE_API void FlipBitmap(
+	ID2D1HwndRenderTarget* Renderer, 
+	const wchar_t* FileName, ID2D1Bitmap* BitmapToFlip, bool Flip = true);
+
+// Setup desired bitmap image, 
 // call this function with the desired bitmap pointer as the return type 
-// e.g. MyBitmapPointer = SetBitmap(RenderTarget, FileName, Flip)
-extern "C" VOODOOENGINE_API ID2D1Bitmap* SetBitmap(
-	ID2D1HwndRenderTarget* RenderTarget, const wchar_t* FileName, bool Flip = false);
+// e.g. MyBitmapPointer = SetBitmap(RenderTarget, FileName)
+extern "C" VOODOOENGINE_API ID2D1Bitmap* SetupBitmap(
+	ID2D1HwndRenderTarget* Renderer, const wchar_t* FileName);
+
 // Setup bitmap struct
 extern "C" VOODOOENGINE_API SBitmapParameters SetupBitmapParams(ID2D1Bitmap* CreatedBitmap);
-// Set the bitmap source location on the bitmap image, use multiplier if you want to offset bitmap source X axis
+// Set the bitmap source location on the bitmap image, 
+// use multiplier if you want to offset bitmap source X axis
 extern "C" VOODOOENGINE_API void SetBitmapSourceLocationX(
 	BitmapComponent* BitmapToUpdate, int BitmapSourceWidth, int LocationOffsetMultiplier = 1);
-// Set the bitmap source location on the bitmap image, use multiplier if you want to offset bitmap source Y axis
+// Set the bitmap source location on the bitmap image, 
+// use multiplier if you want to offset bitmap source Y axis
 extern "C" VOODOOENGINE_API void SetBitmapSourceLocationY(
 	BitmapComponent* BitmapToUpdate, int BitmapSourceHeight, int LocationOffsetMultiplier = 1);
 //---------------------
@@ -310,7 +325,7 @@ extern "C" VOODOOENGINE_API void BroadcastCollision(
 // Rendering
 //---------------------
 ID2D1HwndRenderTarget* SetupRenderer(
-	ID2D1HwndRenderTarget* RenderTarget, HWND WindowHandle);
+	ID2D1HwndRenderTarget* Renderer, HWND WindowHandle);
 extern "C" VOODOOENGINE_API void RenderBitmapByLayer(
 	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> StoredBitmaps, int RenderLayer);
 extern "C" VOODOOENGINE_API void RenderBitmaps(
@@ -604,7 +619,22 @@ public:
 		}
 	};
 
-	inline static LRESULT CALLBACK WindowsProcedure(
+	static void UpdateKeyboardInput(VoodooEngine* Engine, UINT Message, WPARAM WParam)
+	{
+		switch (Message)
+		{
+		case WM_KEYDOWN:
+			BroadcastInput(VoodooEngine::Engine->StoredInputCallbacks, WParam, true);
+			break;
+		case WM_KEYUP:
+			BroadcastInput(VoodooEngine::Engine->StoredInputCallbacks, WParam, false);
+			break;
+		default:
+			break;
+		}
+	}
+
+	inline static LRESULT CALLBACK WindowProcedure(
 		HWND HWind, UINT Message, WPARAM WParam, LPARAM LParam)
 	{
 		// Don't use engine if not running 
@@ -635,6 +665,7 @@ public:
 		VoodooEngine::Engine->WinProcParams.LParam = LParam;
 
 		UpdateMouseInput(VoodooEngine::Engine, Message);
+		UpdateKeyboardInput(VoodooEngine::Engine, Message, WParam);
 
 		// Hides system mouse cursor since engine is using custom icon for cursor
 		if (Message == WM_SETCURSOR &&
@@ -687,7 +718,7 @@ public:
 		StoredGameObjects.back()->Location = SpawnLocation;
 		StoredGameObjects.back()->GameObjectNumberID = AssetID;
 		StoredGameObjects.back()->CreateDefaultAssetCollisionInGame = CreateAssetCollision;
-		StoredGameObjects.back()->GameObjectBitmap.Bitmap = SetBitmap(Renderer, AssetPath);
+		StoredGameObjects.back()->GameObjectBitmap.Bitmap = SetupBitmap(Renderer, AssetPath);
 		StoredGameObjects.back()->GameObjectBitmap.BitmapParams =
 			SetupBitmapParams(StoredGameObjects.back()->GameObjectBitmap.Bitmap);
 		StoredGameObjects.back()->GameObjectBitmap.BitmapParams.RenderLayer = AssignedRenderLayer;
@@ -880,7 +911,7 @@ public:
 	{
 		Engine = EngineReference;
 		SEditorAssetList Asset;
-		GizmoBitmap.Bitmap = SetBitmap(Engine->Renderer, Asset.Gizmo);
+		GizmoBitmap.Bitmap = SetupBitmap(Engine->Renderer, Asset.Gizmo);
 		GizmoBitmap.BitmapParams = SetupBitmapParams(GizmoBitmap.Bitmap);
 		RenderGizmoCollisionRect = Engine->DebugMode;
 		SetupGizmoCollisionTag();
@@ -1303,9 +1334,9 @@ public:
 		Engine->StoredInputCallbacks.push_back(this);
 
 		// Create level editor UI
-		LevelEditorUITop.Bitmap = SetBitmap(Engine->Renderer, Asset.LevelEditorUITop);
+		LevelEditorUITop.Bitmap = SetupBitmap(Engine->Renderer, Asset.LevelEditorUITop);
 		LevelEditorUITop.BitmapParams = SetupBitmapParams(LevelEditorUITop.Bitmap);
-		LevelEditorUIOverlay.Bitmap = SetBitmap(Engine->Renderer, Asset.LevelEditorUIOverlay);
+		LevelEditorUIOverlay.Bitmap = SetupBitmap(Engine->Renderer, Asset.LevelEditorUIOverlay);
 		LevelEditorUIOverlay.BitmapParams = SetupBitmapParams(LevelEditorUIOverlay.Bitmap);
 		Engine->StoredEditorBitmapComponents.push_back(&LevelEditorUIOverlay);
 		Engine->StoredEditorBitmapComponents.push_back(&LevelEditorUITop);
