@@ -22,10 +22,20 @@ void CreateAppWindow(SWindowParams& WindowParams, WNDPROC InputCallbackFunction)
 
 	RegisterClassEx(&WindowParams.WindowClass);
 
+	int WindowFullscreen = 0;
+	if (WindowParams.Fullscreen)
+	{
+		WindowFullscreen = WS_POPUP;
+	}
+	else
+	{
+		WindowFullscreen = WS_OVERLAPPEDWINDOW;
+	}
+
 	WindowParams.HWind = CreateWindow(
 		WindowParams.WindowClass.lpszClassName,
 		WindowParams.WindowTitle,
-		WindowParams.Fullscreen,
+		WindowFullscreen,
 		0, 0,
 		WindowParams.ScreenResolutionWidth,
 		WindowParams.ScreenResolutionHeight,
@@ -35,11 +45,22 @@ void CreateAppWindow(SWindowParams& WindowParams, WNDPROC InputCallbackFunction)
 		nullptr);
 }
 
-void SetCustomAppIcon(LPCWSTR IconFileName, HWND &HWind)
+void SetCustomAppIcon(VoodooEngine* Engine)
 {
+	// Setup the app icon path
+	const wchar_t* IconPath;
+	if (Engine->EditorMode)
+	{
+		IconPath = L"EngineContent/Ico/EngineIcon.ico";
+	}
+	else
+	{
+		IconPath = L"GameIcon.ico";
+	}
+
 	// Load custom app icon from file (ico file format)
 	HANDLE CustomAppIcon = LoadImage(
-		0, IconFileName,
+		0, IconPath,
 		IMAGE_ICON, 0, 0,
 		LR_DEFAULTSIZE | LR_LOADFROMFILE);
 
@@ -47,11 +68,13 @@ void SetCustomAppIcon(LPCWSTR IconFileName, HWND &HWind)
 	// (if no icon is found, then the engine will use default desktop icon)
 	if (CustomAppIcon)
 	{
-		SendMessage(HWind, WM_SETICON, ICON_SMALL, (LPARAM)CustomAppIcon);
-		SendMessage(HWind, WM_SETICON, ICON_BIG, (LPARAM)CustomAppIcon);
+		SendMessage(Engine->Window.HWind, WM_SETICON, ICON_SMALL, (LPARAM)CustomAppIcon);
+		SendMessage(Engine->Window.HWind, WM_SETICON, ICON_BIG, (LPARAM)CustomAppIcon);
 		
-		SendMessage(GetWindow(HWind, GW_OWNER), WM_SETICON, ICON_SMALL, (LPARAM)CustomAppIcon);
-		SendMessage(GetWindow(HWind, GW_OWNER), WM_SETICON, ICON_BIG, (LPARAM)CustomAppIcon);
+		SendMessage(GetWindow(
+			Engine->Window.HWind, GW_OWNER), WM_SETICON, ICON_SMALL, (LPARAM)CustomAppIcon);
+		SendMessage(GetWindow(
+			Engine->Window.HWind, GW_OWNER), WM_SETICON, ICON_BIG, (LPARAM)CustomAppIcon);
 	}
 }
 
@@ -1194,7 +1217,7 @@ void SaveGameObjectsToFile(char* FileName, VoodooEngine* Engine)
 	{
 		for (int i = 0; i < Engine->StoredGameObjects.size(); i++)
 		{
-			File << Engine->StoredGameObjects[i]->GameObjectNumberID 
+			File << Engine->StoredGameObjects[i]->GameObjectID 
 				<< " " << Engine->StoredGameObjects[i]->Location.X 
 				<< " " << Engine->StoredGameObjects[i]->Location.Y << '\n';
 		}
@@ -1248,7 +1271,7 @@ void InitializeWindow(
 	WNDPROC WindowProcedure,
 	int WindowResolutionWidth, 
 	int WindowResolutionHeight, 
-	int WindowFullScreen)
+	bool WindowFullScreen)
 {
 	// Setup the window
 	Engine->Window.WindowTitle = WindowTitle;
@@ -1256,9 +1279,6 @@ void InitializeWindow(
 	Engine->Window.ScreenResolutionHeight = WindowResolutionHeight;
 	Engine->Window.Fullscreen = WindowFullScreen;
 	CreateAppWindow(Engine->Window, WindowProcedure);
-
-	// Setup the app icon
-	SetCustomAppIcon(L"GameIcon.ico", Engine->Window.HWind);
 
 	// Setup the renderer
 	Engine->Renderer = SetupRenderer(Engine->Renderer, Engine->Window.HWind);
@@ -1270,6 +1290,8 @@ void InitializeEngine(VoodooEngine* Engine)
 	Engine->DebugMode = SetDebugMode();
 	// Assign based on configuration file if editor mode is true/false
 	Engine->EditorMode = SetEditorMode();
+
+	SetCustomAppIcon(Engine);
 
 	// Create engine mouse cursor
 	CreateMouse(Engine, { 6, 6 });
@@ -1285,10 +1307,11 @@ void InitializeEngine(VoodooEngine* Engine)
 	QueryPerformanceCounter(&Engine->StartTicks);
 
 	Engine->EngineRunning = true;
-	// TODO: add or statement here if in "Main Menu"
-	if (!Engine->EditorMode)
+
+	// Create level editor if in editor mode
+	if (Engine->EditorMode)
 	{
-		Engine->GameRunning = true;
+		LevelEditor* LevelEditorInstance = new LevelEditor(Engine);
 	}
 }
 

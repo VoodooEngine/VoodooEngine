@@ -99,13 +99,11 @@ struct SWindowParams
 	LPCWSTR WindowTitle;
 	int ScreenResolutionWidth;
 	int ScreenResolutionHeight;
-	int Fullscreen;
+	bool Fullscreen = true;
 };
 // Create and register app window
 void CreateAppWindow(
 	SWindowParams& WindowParams, WNDPROC InputCallbackFunction);
-// This will set a custom assigned icon of the app window title/task bar
-void SetCustomAppIcon(LPCWSTR IconFileName, HWND& HWind);
 // Updates any changes made to the app window (e.g. dragging the window)
 void UpdateAppWindow();
 //---------------------
@@ -429,7 +427,9 @@ public:
 	virtual void OnGameObjectDeleted(){};
 
 	BitmapComponent GameObjectBitmap;
-	int GameObjectNumberID = 0;
+
+	// Never account for negative value as game object ID as that is the default value
+	int GameObjectID = -1;
 
 	// Optional, can be set to not be created
 	CollisionComponent AssetCollision;
@@ -716,7 +716,7 @@ public:
 
 		StoredGameObjects.push_back(new T);
 		StoredGameObjects.back()->Location = SpawnLocation;
-		StoredGameObjects.back()->GameObjectNumberID = AssetID;
+		StoredGameObjects.back()->GameObjectID = AssetID;
 		StoredGameObjects.back()->CreateDefaultAssetCollisionInGame = CreateAssetCollision;
 		StoredGameObjects.back()->GameObjectBitmap.Bitmap = SetupBitmap(Renderer, AssetPath);
 		StoredGameObjects.back()->GameObjectBitmap.BitmapParams =
@@ -808,6 +808,10 @@ void SetCustomMouseCursorLocation(VoodooEngine* Engine, SVector NewLocation);
 void UpdateCustomMouseCursorLocation(VoodooEngine* Engine);
 void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine);
 //---------------------
+
+// This will set a custom assigned icon of the app window title/task bar
+// (will default to windows default app icon if no valid custom icon is found)
+void SetCustomAppIcon(VoodooEngine* Engine);
 
 extern "C" VOODOOENGINE_API Button* CreateButton(
 	VoodooEngine* Engine, 
@@ -1382,6 +1386,8 @@ public:
 
 		LevelEditorVisible = true;
 		SetMenuVisible(EMenuType::ViewModeSelection);
+
+		CreateGizmo();
 	}
 
 	Gizmo TransformGizmo;
@@ -1426,14 +1432,14 @@ public:
 	};
 	void CreateAssetButtons()
 	{
-		PopulateCurrentStoredAssets();
+		// First get all stored game object and store them in "CurrentStoredButtonAssets"
+		AddAssetContentForLevelEditor();
 
 		float LocXOffset = ASSET_SELECTION_GRID_OFFSETLOC_COLUMN_1;
 		float LocYOffset = ASSET_SELECTION_GRID_OFFSETLOC_ROW_1;
 		float OffsetYAmount = 100;
 
 		int Index = 0;
-
 		for (int i = 0; i < CurrentStoredButtonAssets.size(); i++)
 		{
 			int CurrentAssetID = CurrentStoredButtonAssets[i].AssetID;
@@ -1567,16 +1573,24 @@ public:
 	{
 		UpdateAssetThumbnailButtonsState(NewButtonState);
 		SetButtonState(OpenLevelButton, NewButtonState, true);
-		SetButtonState(SaveLevelButton, NewButtonState);
 		SetButtonState(PlayLevelButton, NewButtonState, true);
 		SetButtonState(StopPlayButton, NewButtonState, true);
 		if (NewButtonState == EButtonState::Hidden)
 		{
 			SetMenuVisible(EMenuType::None);
+			SetButtonState(SaveLevelButton, EButtonState::Hidden);
 		}
 		else
 		{
 			SetMenuVisible(MenuSelectedBeforeHidden);
+			if (ChangesMadeSinceLastSave)
+			{
+				SetButtonState(SaveLevelButton, EButtonState::Default);
+			}
+			else
+			{
+				SetButtonState(SaveLevelButton, EButtonState::Disabled);
+			}
 		}
 	};
 	void UpdateLevelEditorVisibility(bool Hide)
@@ -1768,7 +1782,10 @@ public:
 	};
 	void OnButtonPressed()
 	{
-		ButtonPressedCallback(HoveredButtonID);
+		if (ButtonPressedCallback)
+		{
+			ButtonPressedCallback(HoveredButtonID);
+		}
 
 		switch (HoveredButtonID)
 		{
@@ -1825,9 +1842,12 @@ public:
 			// In asset menu mode, 
 			// when asset button is clicked a game obejct based on ID is spawned
 			case LevelEditor::AssetSelection: 
-				Engine->AssetLoadFunctionPointer(HoveredButtonID,
-					{ ASSET_SELECTION_SPAWN_LOCATION_X, ASSET_SELECTION_SPAWN_LOCATION_Y });
-				UpdateSaveState(false);
+				if (Engine->AssetLoadFunctionPointer)
+				{
+					Engine->AssetLoadFunctionPointer(HoveredButtonID,
+						{ ASSET_SELECTION_SPAWN_LOCATION_X, ASSET_SELECTION_SPAWN_LOCATION_Y });
+					UpdateSaveState(false);
+				}
 				break;
 			// In render layer selection mode,
 			// when eye icon button is clicked, 
@@ -1982,8 +2002,28 @@ private:
 			SetButtonState(SaveLevelButton, EButtonState::Default);
 		}
 	};
-	void PopulateCurrentStoredAssets()
+	void AddLevelEditorAssetButton(int AssetID, const wchar_t* AssetPath, bool CreateAssetCollision)
 	{
+		SAssetButton AssetButton;
+		AssetButton.AssetID = AssetID;
+		AssetButton.AssetParams.AssetPath = AssetPath;
+		AssetButton.AssetParams.CreateDefaultAssetCollision = CreateAssetCollision;
+		Engine->StoredButtonAssets.push_back(AssetButton);
+	};
+	void AddAssetContentForLevelEditor()
+	{
+		// Iterate over all stored game objects in the game and add them as asset buttons
+		for (int i = 0; i < Engine->StoredGameObjectIDs.size(); i++)
+		{
+			auto Iterator = Engine->StoredGameObjectIDs.find(i);
+			AddLevelEditorAssetButton(
+				Iterator->first,
+				Iterator->second.AssetPath,
+				Iterator->second.CreateDefaultAssetCollision);
+		}
+
+		// When above iteration is done, store all the buttons in the level editor,
+		// which will then be used as clickable buttons
 		for (int i = 0; i < Engine->StoredButtonAssets.size(); i++)
 		{
 			CurrentStoredButtonAssets.push_back(Engine->StoredButtonAssets[i]);
@@ -2079,7 +2119,7 @@ extern "C" VOODOOENGINE_API void InitializeWindow(
 	WNDPROC WindowProcedure,
 	int WindowResolutionWidth,
 	int WindowResolutionHeight,
-	int WindowFullScreen);
+	bool WindowFullScreen = true);
 
 // Setup the engine 
 extern "C" VOODOOENGINE_API void InitializeEngine(VoodooEngine* Engine);
