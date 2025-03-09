@@ -37,7 +37,6 @@
 #include <map>
 #include <string>
 #include <vector>
-#include <set>
 
 // Win32 API
 #include <Windows.h>
@@ -54,11 +53,7 @@
 #include <dwrite.h>
 #pragma comment(lib, "Dwrite.lib")
 
-#ifdef VOODOOENGINE_EXPORTS
 #define VOODOOENGINE_API __declspec(dllexport)
-#else
-#define VOODOOENGINE_API __declspec(dllimport)
-#endif
 
 // Maximum number of allowed renderlayers
 #define RENDERLAYER_MAXNUM 10
@@ -89,8 +84,6 @@
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_RENDERLAYERS -10
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_VIEWMODE -11
 
-// Application window related
-//---------------------
 // Window parameters information i.e. title name of application, window resolution, fullscreen etc.  
 struct SWindowParams
 {
@@ -101,14 +94,8 @@ struct SWindowParams
 	int ScreenResolutionHeight;
 	bool Fullscreen = true;
 };
-// Create and register app window
-void CreateAppWindow(
-	SWindowParams& WindowParams, WNDPROC InputCallbackFunction);
-// Updates any changes made to the app window (e.g. dragging the window)
-void UpdateAppWindow();
-//---------------------
 
-enum ETextRenderType
+enum ETextBrushRenderType
 {
 	RenderWhiteBrush,
 	RenderBlackBrush
@@ -119,7 +106,7 @@ enum ETextRenderType
 struct UITextParameters
 {
 	const wchar_t* Text = L"";
-	ETextRenderType TextRenderType = ETextRenderType::RenderWhiteBrush;
+	ETextBrushRenderType TextRenderType = ETextBrushRenderType::RenderWhiteBrush;
 	bool HideText = false;
 };
 //---------------------
@@ -190,9 +177,9 @@ struct SBitmapParameters
 	int RenderLayer = 0;
 	float Opacity = 1;
 	bool HiddenInGame = false;
-	SVector BitmapOffsetLeft = { 0, 0 };
-	SVector BitmapOffsetRight = { 0, 0 };
-	SVector BitmapSource = { 0, 0 };
+	SVector BitmapOffsetLeft;
+	SVector BitmapOffsetRight;
+	SVector BitmapSource;
 };
 // Bitmap component, contains bitmap pointer, bitmap params and transform component
 class BitmapComponent : public TransformComponent
@@ -202,29 +189,29 @@ public:
 	SBitmapParameters BitmapParams = {};
 };
 
-// Private function only used by "SetupBitmap" and "FlipBitmap"
-ID2D1Bitmap* BitmapCreationSetup(
-	ID2D1HwndRenderTarget* Renderer, 
-	const wchar_t* FileName, ID2D1Bitmap* BitmapToCreate, bool Flip = false);
+// Flip a bitmap, can be used for e.g. for player/enemy movement 
+// (if "Flip" is set to false then bitmap will be "un flipped") 
+extern "C" VOODOOENGINE_API ID2D1Bitmap* FlipBitmap( 
+	ID2D1Bitmap* BitmapToFlip,
+	const wchar_t* FileName,
+	ID2D1HwndRenderTarget* Renderer, bool Flip = true);
 
-// If you want to flip an image e.g. for player/enemy movement 
-// (if set to false then it goes to default) 
-extern "C" VOODOOENGINE_API void FlipBitmap(
-	ID2D1HwndRenderTarget* Renderer, 
-	const wchar_t* FileName, ID2D1Bitmap* BitmapToFlip, bool Flip = true);
-
-// Setup desired bitmap image, 
-// call this function with the desired bitmap pointer as the return type 
-// e.g. MyBitmapPointer = SetBitmap(RenderTarget, FileName)
+// Setup a bitmap
 extern "C" VOODOOENGINE_API ID2D1Bitmap* SetupBitmap(
-	ID2D1HwndRenderTarget* Renderer, const wchar_t* FileName);
+	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer);
 
-// Setup bitmap struct
-extern "C" VOODOOENGINE_API SBitmapParameters SetupBitmapParams(ID2D1Bitmap* CreatedBitmap);
+// Setup bitmap component from a texture atlas (created bitmap)
+extern "C" VOODOOENGINE_API void SetupBitmapComponent(
+	BitmapComponent* BitmapComponentToSetup,
+	ID2D1Bitmap* TextureAtlas,
+	SVector TextureAtlasCoordinates = {},
+	bool DefineSourceByBitmapWidthHeight = true);
+
 // Set the bitmap source location on the bitmap image, 
 // use multiplier if you want to offset bitmap source X axis
 extern "C" VOODOOENGINE_API void SetBitmapSourceLocationX(
 	BitmapComponent* BitmapToUpdate, int BitmapSourceWidth, int LocationOffsetMultiplier = 1);
+
 // Set the bitmap source location on the bitmap image, 
 // use multiplier if you want to offset bitmap source Y axis
 extern "C" VOODOOENGINE_API void SetBitmapSourceLocationY(
@@ -274,7 +261,7 @@ extern "C" VOODOOENGINE_API void InitializeAnimationFirstFrame(
 class Object
 {
 public:
-	SVector Location = { 0, 0 };
+	SVector Location;
 
 	virtual void OnBeginOverlap(int SenderCollisionTag, int TargetCollisionTag, Object* Target = nullptr){};
 	virtual void OnEndOverlap(int SenderCollisionTag, int TargetCollisionTag){};
@@ -322,18 +309,14 @@ extern "C" VOODOOENGINE_API void BroadcastCollision(
 
 // Rendering
 //---------------------
-ID2D1HwndRenderTarget* SetupRenderer(
-	ID2D1HwndRenderTarget* Renderer, HWND WindowHandle);
-extern "C" VOODOOENGINE_API void RenderBitmapByLayer(
+void RenderBitmapByLayer(
 	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> StoredBitmaps, int RenderLayer);
-extern "C" VOODOOENGINE_API void RenderBitmaps(
+void RenderBitmaps(
 	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> BitmapsToRender, 
 	int MaxNumRenderLayers = 0);
-extern "C" VOODOOENGINE_API void RenderCollisionRectangles(
+void RenderCollisionRectangles(
 	ID2D1HwndRenderTarget* Renderer, std::vector<CollisionComponent*> CollisionRectsToRender);
-extern "C" VOODOOENGINE_API void RenderCollisionRectangle(
-	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectToRender);
-void AssignCollisionRectangleToRender(
+void RenderCollisionRectangle(
 	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectToRender);
 //---------------------
 
@@ -384,7 +367,7 @@ struct SButtonParameters
 	int ButtonCollisionTag = 0;
 	std::string ButtonTextString = "";
 	SVector ButtonTextOffset = { -2, 10 };
-	SVector ButtonLocation = { 0, 0 };
+	SVector ButtonLocation;
 };
 // Generic button class (used by level editor, can be used for game UI)
 class Button
@@ -444,9 +427,11 @@ public:
 // for the assets built in the levels in the game
 struct SAssetParameters
 {
-	const wchar_t* AssetPath = L"";
+	ID2D1Bitmap* TextureAtlas = nullptr;
+	SVector TextureAltasCoordinates = { 0, 0 };
 	int RenderLayer = 0;
 	bool CreateDefaultAssetCollision = false;
+	const wchar_t* EditorAssetButtonThumbnailFilePath = L"EngineContent/LevelEditor/AssetButtonBase.png";
 };
 // Asset button struct (used by level editor)
 // PLEASE NOTE: Only numbers as "0" and up can be accounted for as ID numbers for assets 
@@ -508,12 +493,13 @@ public:
 	// Interface objects
 	std::vector<IRender*> InterfaceObjects_Render;
 
+	// Game background
+	BitmapComponent* CurrentGameBackground = nullptr;
+
 	// Stored objects
 	std::vector<UpdateComponent*> StoredUpdateComponents;
 	std::vector<CollisionComponent*> StoredCollisionComponents;
 	std::vector<BitmapComponent*> StoredBitmapComponents;
-	std::vector<BitmapComponent*> StoredLevelBackgrounds;
-	std::map<int, bool> StoredInputs;
 	std::vector<IInput*> StoredInputCallbacks;
 	std::vector<GameStateCallback*> StoredGameStateCallbacks;
 	std::vector<GameObject*> StoredGameObjects;
@@ -524,6 +510,7 @@ public:
 	std::vector<BitmapComponent*> StoredButtonBitmapComponents;
 	std::vector<BitmapComponent*> StoredButtonTexts;
 	std::vector<CollisionComponent*> StoredEditorCollisionComponents;
+	std::vector<SAssetButton> StoredButtonAssets;
 
 	// Default collision rect color for editor mode assets
 	SColor EditorCollisionRectColor = { 200, 0, 255 };
@@ -541,7 +528,6 @@ public:
 	SVector AssetButtonThumbnailDimensions = { 90, 90 };
 	std::vector<UpdateComponent*> StoredEditorUpdateComponents;
 	std::vector<BitmapComponent*> StoredEditorBitmapComponents;
-	std::vector<SAssetButton> StoredButtonAssets;
 
 	// Variables used by direct write to display UI text, 
 	// they will be created and be available for the remainder of the program
@@ -710,17 +696,17 @@ public:
 			return nullptr;
 		}
 
-		const wchar_t* AssetPath = Iterator->second.AssetPath;
+		SVector AssetBitmapSource = Iterator->second.TextureAltasCoordinates;
 		bool CreateAssetCollision = Iterator->second.CreateDefaultAssetCollision;
 		int AssignedRenderLayer = Iterator->second.RenderLayer;
 
 		StoredGameObjects.push_back(new T);
 		StoredGameObjects.back()->Location = SpawnLocation;
 		StoredGameObjects.back()->GameObjectID = AssetID;
-		StoredGameObjects.back()->CreateDefaultAssetCollisionInGame = CreateAssetCollision;
-		StoredGameObjects.back()->GameObjectBitmap.Bitmap = SetupBitmap(Renderer, AssetPath);
-		StoredGameObjects.back()->GameObjectBitmap.BitmapParams =
-			SetupBitmapParams(StoredGameObjects.back()->GameObjectBitmap.Bitmap);
+		StoredGameObjects.back()->CreateDefaultAssetCollisionInGame = CreateAssetCollision; 
+		SetupBitmapComponent(
+			&StoredGameObjects.back()->GameObjectBitmap, 
+			Iterator->second.TextureAtlas, AssetBitmapSource, false);
 		StoredGameObjects.back()->GameObjectBitmap.BitmapParams.RenderLayer = AssignedRenderLayer;
 		StoredGameObjects.back()->GameObjectBitmap.ComponentLocation = SpawnLocation;
 		StoredBitmapComponents.push_back(&StoredGameObjects.back()->GameObjectBitmap);
@@ -729,10 +715,9 @@ public:
 		// in order for it to be selectable in the level editor
 		if (EditorMode || CreateAssetCollision)
 		{
-			SVector GameObjectBitmapSize = 
-				{ StoredGameObjects.back()->GameObjectBitmap.Bitmap->GetSize().width,
-				StoredGameObjects.back()->GameObjectBitmap.Bitmap->GetSize().height };
-			StoredGameObjects.back()->AssetCollision.CollisionRect = GameObjectBitmapSize;
+			StoredGameObjects.back()->AssetCollision.CollisionRect = 
+				{ StoredGameObjects.back()->GameObjectBitmap.BitmapParams.BitmapSource.X,
+				StoredGameObjects.back()->GameObjectBitmap.BitmapParams.BitmapSource.Y };
 			StoredGameObjects.back()->AssetCollision.ComponentLocation = SpawnLocation;
 			StoredGameObjects.back()->AssetCollision.CollisionTag = AssetID;
 			StoredGameObjects.back()->AssetCollision.Owner = StoredGameObjects.back();
@@ -756,11 +741,6 @@ public:
 	T* DeleteGameObject(T* ClassToDelete)
 	{
 		RemoveBitmapComponent(&ClassToDelete->GameObjectBitmap, this);
-		if (ClassToDelete->GameObjectBitmap.Bitmap != nullptr)
-		{
-			ClassToDelete->GameObjectBitmap.Bitmap->Release();
-			ClassToDelete->GameObjectBitmap.Bitmap = nullptr;
-		}
 		RemoveCollisionComponent(&ClassToDelete->AssetCollision, this);
 		
 		StoredGameObjects.erase(std::remove(
@@ -793,25 +773,17 @@ public:
 		std::vector<CollisionComponent*>().swap(StoredCollisionComponents);
 		std::vector<GameObject*>().swap(StoredGameObjects);
 	};
-};
 
-// Setup default brushes used by various objects that needs a brush 
-// (so we don't create new brushes for every object) 
-void SetupDefaultBrushes(VoodooEngine* Engine);
+private:
+	std::map<int, bool> StoredInputs;
+};
 
 // Custom mouse cursor related
 //---------------------
 extern "C" VOODOOENGINE_API void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize);
 extern "C" VOODOOENGINE_API void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize);
 extern "C" VOODOOENGINE_API void SetMouseState(bool Show, VoodooEngine* Engine);
-void SetCustomMouseCursorLocation(VoodooEngine* Engine, SVector NewLocation);
-void UpdateCustomMouseCursorLocation(VoodooEngine* Engine);
-void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine);
 //---------------------
-
-// This will set a custom assigned icon of the app window title/task bar
-// (will default to windows default app icon if no valid custom icon is found)
-void SetCustomAppIcon(VoodooEngine* Engine);
 
 extern "C" VOODOOENGINE_API Button* CreateButton(
 	VoodooEngine* Engine, 
@@ -915,8 +887,8 @@ public:
 	{
 		Engine = EngineReference;
 		SEditorAssetList Asset;
-		GizmoBitmap.Bitmap = SetupBitmap(Engine->Renderer, Asset.Gizmo);
-		GizmoBitmap.BitmapParams = SetupBitmapParams(GizmoBitmap.Bitmap);
+		GizmoBitmap.Bitmap = SetupBitmap(GizmoBitmap.Bitmap, Asset.Gizmo, Engine->Renderer);
+		SetupBitmapComponent(&GizmoBitmap, GizmoBitmap.Bitmap);
 		RenderGizmoCollisionRect = Engine->DebugMode;
 		SetupGizmoCollisionTag();
 		SetupGizmoCollisionRect();
@@ -1282,6 +1254,7 @@ extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(char* FileName, VoodooE
 class LevelEditor : public Object, public UpdateComponent, public IInput, public IEvent
 {
 
+// Button locations
 #define BUTTON_LOC_X_OPENLEVEL 20
 #define BUTTON_LOC_Y_OPENLEVEL 20
 #define BUTTON_LOC_X_SAVELEVEL 180
@@ -1338,10 +1311,10 @@ public:
 		Engine->StoredInputCallbacks.push_back(this);
 
 		// Create level editor UI
-		LevelEditorUITop.Bitmap = SetupBitmap(Engine->Renderer, Asset.LevelEditorUITop);
-		LevelEditorUITop.BitmapParams = SetupBitmapParams(LevelEditorUITop.Bitmap);
-		LevelEditorUIOverlay.Bitmap = SetupBitmap(Engine->Renderer, Asset.LevelEditorUIOverlay);
-		LevelEditorUIOverlay.BitmapParams = SetupBitmapParams(LevelEditorUIOverlay.Bitmap);
+		LevelEditorUITop.Bitmap = SetupBitmap(LevelEditorUITop.Bitmap, Asset.LevelEditorUITop, Engine->Renderer);
+		SetupBitmapComponent(&LevelEditorUITop, LevelEditorUITop.Bitmap);
+		LevelEditorUIOverlay.Bitmap = SetupBitmap(LevelEditorUIOverlay.Bitmap, Asset.LevelEditorUIOverlay, Engine->Renderer);
+		SetupBitmapComponent(&LevelEditorUIOverlay, LevelEditorUIOverlay.Bitmap);
 		Engine->StoredEditorBitmapComponents.push_back(&LevelEditorUIOverlay);
 		Engine->StoredEditorBitmapComponents.push_back(&LevelEditorUITop);
 
@@ -1472,7 +1445,7 @@ public:
 				Engine, AssetButton, CurrentAssetID, AssetButtonThumbnail, "",
 				{ ASSET_SELECTION_BUTTON_LOC_X_ORIGIN + LocXOffset,
 				(ASSET_SELECTION_BUTTON_LOC_Y_ORIGIN + LocYOffset) },
-				CurrentStoredButtonAssets[i].AssetParams.AssetPath);
+				CurrentStoredButtonAssets[i].AssetParams.EditorAssetButtonThumbnailFilePath);
 			
 			CurrentStoredButtonAssets[i].AssetButton = AssetButton;
 			LocYOffset += OffsetYAmount;
@@ -1697,24 +1670,24 @@ public:
 			RenderLayerVisibilityEyeIconButtons.at(
 			HoveredButtonID)->ButtonBitmap.Bitmap->GetSize().width / 2;
 		auto Iterator = Engine->StoredRenderLayerUITexts.find(HoveredButtonID);
-		if (Iterator->second.TextRenderType == ETextRenderType::RenderBlackBrush)
+		if (Iterator->second.TextRenderType == ETextBrushRenderType::RenderBlackBrush)
 		{
 			// Show "on" eye icon bitmap
 			SetBitmapSourceLocationX(
 				&RenderLayerVisibilityEyeIconButtons.at(
 				HoveredButtonID)->ButtonBitmap, BitmapWidth, 1);
 
-			Iterator->second.TextRenderType = ETextRenderType::RenderWhiteBrush;
+			Iterator->second.TextRenderType = ETextBrushRenderType::RenderWhiteBrush;
 			SetGameObjectsVisibilityBasedOnRenderLayer(true, HoveredButtonID);
 		}
-		else if (Iterator->second.TextRenderType == ETextRenderType::RenderWhiteBrush)
+		else if (Iterator->second.TextRenderType == ETextBrushRenderType::RenderWhiteBrush)
 		{
 			// Show "off" eye icon bitmap
 			SetBitmapSourceLocationX(
 				&RenderLayerVisibilityEyeIconButtons.at(
 				HoveredButtonID)->ButtonBitmap, BitmapWidth, 2);
 
-			Iterator->second.TextRenderType = ETextRenderType::RenderBlackBrush;
+			Iterator->second.TextRenderType = ETextBrushRenderType::RenderBlackBrush;
 			SetGameObjectsVisibilityBasedOnRenderLayer(false, HoveredButtonID);
 		}
 	};
@@ -1867,13 +1840,16 @@ public:
 	{
 		if (Input == VK_TAB)
 		{
-			if (LevelEditorVisible)
+			if (Pressed)
 			{
-				UpdateLevelEditorVisibility(true);
-			}
-			else if (!LevelEditorVisible)
-			{
-				UpdateLevelEditorVisibility(false);
+				if (LevelEditorVisible)
+				{
+					UpdateLevelEditorVisibility(true);
+				}
+				else if (!LevelEditorVisible)
+				{
+					UpdateLevelEditorVisibility(false);
+				}
 			}
 		}
 
@@ -2006,7 +1982,7 @@ private:
 	{
 		SAssetButton AssetButton;
 		AssetButton.AssetID = AssetID;
-		AssetButton.AssetParams.AssetPath = AssetPath;
+		AssetButton.AssetParams.EditorAssetButtonThumbnailFilePath = AssetPath;
 		AssetButton.AssetParams.CreateDefaultAssetCollision = CreateAssetCollision;
 		Engine->StoredButtonAssets.push_back(AssetButton);
 	};
@@ -2018,7 +1994,7 @@ private:
 			auto Iterator = Engine->StoredGameObjectIDs.find(i);
 			AddLevelEditorAssetButton(
 				Iterator->first,
-				Iterator->second.AssetPath,
+				Iterator->second.EditorAssetButtonThumbnailFilePath,
 				Iterator->second.CreateDefaultAssetCollision);
 		}
 
@@ -2100,17 +2076,8 @@ private:
 };
 //-------------------------------------------
 
-// Update the engine every frame (frame rate, window changes (resize etc.) and update components)
-//-------------------------------------------
-void Update(VoodooEngine* Engine);
-//-------------------------------------------
-
-// Frame rate related
-//-------------------------------------------
-UINT64 VoodooEngineGetTicks(VoodooEngine* Engine);
+// Set the frame rate limit per second
 extern "C" VOODOOENGINE_API void SetFPSLimit(VoodooEngine* Engine, float FPSLimit);
-extern "C" VOODOOENGINE_API void UpdateFrameRate(VoodooEngine* Engine);
-//-------------------------------------------
 
 // Setup the application window and renderer
 extern "C" VOODOOENGINE_API void InitializeWindow(

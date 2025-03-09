@@ -6,7 +6,8 @@
 #include <fstream>
 #include <sstream>
 
-void CreateAppWindow(SWindowParams& WindowParams, WNDPROC InputCallbackFunction)
+// Create and register app window
+static void CreateAppWindow(SWindowParams& WindowParams, WNDPROC InputCallbackFunction)
 {
 	WindowParams.WindowClass.cbSize = sizeof(WNDCLASSEX);
 	WindowParams.WindowClass.lpfnWndProc = InputCallbackFunction;
@@ -45,7 +46,20 @@ void CreateAppWindow(SWindowParams& WindowParams, WNDPROC InputCallbackFunction)
 		nullptr);
 }
 
-void SetCustomAppIcon(VoodooEngine* Engine)
+// Updates any changes made to the app window (e.g. dragging the window)
+static void UpdateAppWindow()
+{
+	MSG MSGMessage;
+	MSGMessage.message = WM_NULL;
+	while (PeekMessage(&MSGMessage, nullptr, 0, 0, PM_REMOVE))
+	{
+		DispatchMessage(&MSGMessage);
+	}
+}
+
+// This will set a custom assigned icon of the app window title/task bar
+// (will default to windows default app icon if no valid custom icon is found)
+static void SetCustomAppIcon(VoodooEngine* Engine)
 {
 	// Setup the app icon path
 	const wchar_t* IconPath;
@@ -77,28 +91,62 @@ void SetCustomAppIcon(VoodooEngine* Engine)
 			Engine->Window.HWind, GW_OWNER), WM_SETICON, ICON_BIG, (LPARAM)CustomAppIcon);
 	}
 }
-
-void UpdateAppWindow()
+ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* Renderer, HWND HWind)
 {
-	MSG MSGMessage;
-	MSGMessage.message = WM_NULL;
-	while (PeekMessage(&MSGMessage, nullptr, 0, 0, PM_REMOVE))
-	{ 
-		DispatchMessage(&MSGMessage);
-	}
+	ID2D1Factory* Factory = nullptr;
+	HRESULT Result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &Factory);
+
+	// Get user screen size
+	RECT WinRect;
+	GetClientRect(HWind, &WinRect);
+
+	Result = Factory->CreateHwndRenderTarget(
+		D2D1::RenderTargetProperties(),
+		D2D1::HwndRenderTargetProperties(
+			HWind, D2D1::SizeU(WinRect.right, WinRect.bottom)),
+		&Renderer);
+
+	Factory->Release();
+
+	return Renderer;
 }
 
-bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck)
+// Setup default brushes used by various objects that needs a brush 
+// (so we don't create new brushes for every object)
+static void SetupDefaultBrushes(VoodooEngine* Engine)
 {
-	int KeyToCheck = InputToCheck;
-	auto Iterator = StoredInputs.find(KeyToCheck);
-	
-	if (Iterator != StoredInputs.end())
-	{ 
-		return Iterator->second;
+	Engine->Renderer->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::Black),
+		&Engine->BlackBrush);
+
+	Engine->Renderer->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White),
+		&Engine->WhiteBrush);
+}
+
+static UINT64 VoodooEngineGetTicks(VoodooEngine* Engine)
+{
+	QueryPerformanceCounter(&Engine->CurrentTicks);
+	return (UINT64)(((Engine->CurrentTicks.QuadPart - 
+		Engine->StartTicks.QuadPart) * 1000) / Engine->TicksPerSecond.QuadPart);
+}
+
+static void UpdateFrameRate(VoodooEngine* Engine)
+{
+	Engine->TimeToWait = Engine->FrameTargetTime - (VoodooEngineGetTicks(Engine) - Engine->PreviousFrameTime);
+	if (Engine->TimeToWait > 0 &&
+		Engine->TimeToWait <= Engine->FrameTargetTime)
+	{
+		Sleep(Engine->TimeToWait);
 	}
- 
-	return false;
+	Engine->DeltaTime = (VoodooEngineGetTicks(Engine) - Engine->PreviousFrameTime) / 1000.0;
+	Engine->PreviousFrameTime = VoodooEngineGetTicks(Engine);
+}
+
+void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
+{
+	Engine->FPS = FPSLimit;
+	Engine->FrameTargetTime = (1000 / Engine->FPS);
 }
 
 void BroadcastInput(std::vector<IInput*> StoredCallbacks, int Input, bool Pressed)
@@ -109,29 +157,17 @@ void BroadcastInput(std::vector<IInput*> StoredCallbacks, int Input, bool Presse
 	}
 }
 
-UINT64 VoodooEngineGetTicks(VoodooEngine* Engine)
+bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck)
 {
-	QueryPerformanceCounter(&Engine->CurrentTicks);
-	return (UINT64)(((Engine->CurrentTicks.QuadPart - 
-		Engine->StartTicks.QuadPart) * 1000) / Engine->TicksPerSecond.QuadPart);
-}
+	int KeyToCheck = InputToCheck;
+	auto Iterator = StoredInputs.find(KeyToCheck);
 
-void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
-{
-	Engine->FPS = FPSLimit;
-	Engine->FrameTargetTime = (1000 / Engine->FPS);
-}
-
-void UpdateFrameRate(VoodooEngine* Engine)
-{
-	Engine->TimeToWait = Engine->FrameTargetTime - (VoodooEngineGetTicks(Engine) - Engine->PreviousFrameTime);
-	if (Engine->TimeToWait > 0 &&
-		Engine->TimeToWait <= Engine->FrameTargetTime)
+	if (Iterator != StoredInputs.end())
 	{
-		Sleep(Engine->TimeToWait);
+		return Iterator->second;
 	}
-	Engine->DeltaTime = (VoodooEngineGetTicks(Engine) - Engine->PreviousFrameTime) / 1000.0;
-	Engine->PreviousFrameTime = VoodooEngineGetTicks(Engine);
+
+	return false;
 }
 
 void RemoveBitmapComponent(BitmapComponent* Component, VoodooEngine* Engine)
@@ -241,23 +277,12 @@ BitmapComponent* CreateLetter(
 	SVector LetterLocation, const wchar_t* Font)
 {
 	BitmapComponent* CreatedLetter = new BitmapComponent();
-	CreatedLetter->Bitmap = SetupBitmap(Engine->Renderer, Font);
-	CreatedLetter->BitmapParams = SetupBitmapParams(CreatedLetter->Bitmap);
+	CreatedLetter->Bitmap = SetupBitmap(CreatedLetter->Bitmap, Font, Engine->Renderer);
+	SetupBitmapComponent(CreatedLetter, CreatedLetter->Bitmap);
 	CreatedLetter->ComponentLocation = LetterLocation;
 	AssignLetterShiftByID(LetterString, CreatedLetter, Engine);
 
 	return CreatedLetter;
-}
-
-void SetupDefaultBrushes(VoodooEngine* Engine)
-{
-	Engine->Renderer->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::Black),
-		&Engine->BlackBrush);
-
-	Engine->Renderer->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::White),
-		&Engine->WhiteBrush);
 }
 
 void CreateUITextFormat(VoodooEngine* Engine)
@@ -322,7 +347,7 @@ void RenderUITextsRenderLayer(VoodooEngine* Engine)
 			return;
 		}
 
-		if (Iterator->second.TextRenderType == ETextRenderType::RenderBlackBrush)
+		if (Iterator->second.TextRenderType == ETextBrushRenderType::RenderBlackBrush)
 		{
 			Engine->Renderer->DrawText(
 				Iterator->second.Text,
@@ -331,7 +356,7 @@ void RenderUITextsRenderLayer(VoodooEngine* Engine)
 				OriginTextLocation,
 				Engine->BlackBrush);
 		}
-		else if (Iterator->second.TextRenderType == ETextRenderType::RenderWhiteBrush)
+		else if (Iterator->second.TextRenderType == ETextBrushRenderType::RenderWhiteBrush)
 		{
 			Engine->Renderer->DrawText(
 				Iterator->second.Text,
@@ -398,8 +423,12 @@ Button* CreateButton(
 
 	// Create button bitmap and setup bitmap parameters
 	ButtonToCreate->ButtonBitmap.Bitmap = 
-		SetupBitmap(Engine->Renderer, ButtonToCreate->ButtonParams.AssetPathButtonBitmap);
-	ButtonToCreate->ButtonBitmap.BitmapParams = SetupBitmapParams(ButtonToCreate->ButtonBitmap.Bitmap);
+		SetupBitmap(
+		ButtonToCreate->ButtonBitmap.Bitmap, 
+		ButtonToCreate->ButtonParams.AssetPathButtonBitmap,
+		Engine->Renderer);
+	SetupBitmapComponent(
+		&ButtonToCreate->ButtonBitmap, ButtonToCreate->ButtonBitmap.Bitmap);
 	ButtonToCreate->ButtonBitmap.ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;	
 
 	// Setup bitmap source based on button type
@@ -431,10 +460,14 @@ Button* CreateButton(
 	// If asset button type, create asset background bitmap
 	if (ButtonType == AssetButtonThumbnail)
 	{
-		ButtonToCreate->AdditionalBackgroundBitmap.Bitmap =
-			SetupBitmap(Engine->Renderer, L"EngineContent/LevelEditor/AssetButtonBase.png");
-		ButtonToCreate->AdditionalBackgroundBitmap.BitmapParams = 
-			SetupBitmapParams(ButtonToCreate->AdditionalBackgroundBitmap.Bitmap);
+		ButtonToCreate->AdditionalBackgroundBitmap.Bitmap = 
+			SetupBitmap(ButtonToCreate->AdditionalBackgroundBitmap.Bitmap,
+			L"EngineContent/LevelEditor/AssetButtonBase.png", Engine->Renderer);
+		
+		SetupBitmapComponent(
+			&ButtonToCreate->AdditionalBackgroundBitmap, 
+			ButtonToCreate->AdditionalBackgroundBitmap.Bitmap);
+		
 		ButtonToCreate->AdditionalBackgroundBitmap.ComponentLocation = 
 			ButtonToCreate->ButtonParams.ButtonLocation;
 		Engine->StoredButtonBitmapComponents.push_back(&ButtonToCreate->AdditionalBackgroundBitmap);
@@ -585,14 +618,14 @@ void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
 	SetMouseColliderSize(Engine, MouseColliderSize);
 	Engine->StoredEditorCollisionComponents.push_back(&Engine->Mouse.MouseCollider);
 
-	Engine->Mouse.MouseBitmap.Bitmap = SetupBitmap(
-		Engine->Renderer, L"EngineContent/Cursor/CustomMouseCursor.png");
+	Engine->Mouse.MouseBitmap.Bitmap = 
+		SetupBitmap(Engine->Mouse.MouseBitmap.Bitmap,
+		L"EngineContent/Cursor/CustomMouseCursor.png", Engine->Renderer);
+	SetupBitmapComponent(&Engine->Mouse.MouseBitmap, Engine->Mouse.MouseBitmap.Bitmap);
 
 	// Setup custom mouse cursor bitmap if found, otherwise render mouse collider instead
 	if (Engine->Mouse.MouseBitmap.Bitmap)
 	{
-		Engine->Mouse.MouseBitmap.BitmapParams = SetupBitmapParams(Engine->Mouse.MouseBitmap.Bitmap);
-
 		if (Engine->DebugMode)
 		{ 
 			Engine->Mouse.MouseCollider.RenderCollisionRect = true;
@@ -676,28 +709,8 @@ void Update(VoodooEngine* Engine)
 	}
 }
 
-ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* Renderer, HWND HWind)
-{
-	ID2D1Factory* Factory = nullptr;
-	HRESULT Result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &Factory);
-
-	// Get user screen size
-	RECT WinRect;
-	GetClientRect(HWind, &WinRect);
-
-	Result = Factory->CreateHwndRenderTarget(
-		D2D1::RenderTargetProperties(),
-		D2D1::HwndRenderTargetProperties(
-		HWind, D2D1::SizeU(WinRect.right, WinRect.bottom)),
-		&Renderer);
-
-	Factory->Release();
-
-	return Renderer;
-}
-
 ID2D1Bitmap* BitmapCreationSetup(
-	ID2D1HwndRenderTarget* Renderer, const wchar_t* FileName, ID2D1Bitmap* BitmapToCreate, bool Flip)
+	ID2D1Bitmap* BitmapToCreate, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer, bool Flip)
 {
 	// If bitmap is already created, 
 	// then release previous bitmap to avoid memory leak before making it nullptr
@@ -728,7 +741,9 @@ ID2D1Bitmap* BitmapCreationSetup(
 
 	// Failed to find file 
 	if (!Decoder)
+	{ 
 		return nullptr;
+	}
 
 	// Create decoder frame
 	IWICBitmapFrameDecode* DecoderFrame = nullptr;
@@ -756,7 +771,9 @@ ID2D1Bitmap* BitmapCreationSetup(
 			WICBitmapPaletteTypeCustom);
 
 		if (ImageFlip)
+		{ 
 			ImageFlip->Release();
+		}
 	}
 	else
 	{
@@ -774,47 +791,67 @@ ID2D1Bitmap* BitmapCreationSetup(
 		WicConverter, nullptr, &BitmapToCreate);
 
 	if (WicFactory)
+	{ 
 		WicFactory->Release();
-
+	}
 	if (Decoder)
+	{ 
 		Decoder->Release();
-
+	}
 	if (DecoderFrame)
+	{ 
 		DecoderFrame->Release();
-
+	}
 	if (WicConverter)
+	{
 		WicConverter->Release();
+	}
 
 	return BitmapToCreate;
 }
 
-void FlipBitmap(
-	ID2D1HwndRenderTarget* Renderer, 
-	const wchar_t* FileName, ID2D1Bitmap* BitmapToFlip, bool Flip)
-{
-	BitmapCreationSetup(Renderer, FileName, BitmapToFlip, Flip);
-}
-
 ID2D1Bitmap* SetupBitmap(
-	ID2D1HwndRenderTarget* Renderer, const wchar_t* FileName)
+	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget * Renderer)
 {
-	return BitmapCreationSetup(Renderer, FileName, nullptr);
+	 return BitmapCreationSetup(BitmapToSetup, FileName, Renderer, false);
 }
 
-SBitmapParameters SetupBitmapParams(ID2D1Bitmap* BitmapToSetup)
-{
-	SBitmapParameters BitmapSetup = {};
-
-	// Set the bitmap source the same size as the loaded image (created bitmap)
-	BitmapSetup.BitmapSource.X = BitmapToSetup->GetSize().width;
-	BitmapSetup.BitmapSource.Y = BitmapToSetup->GetSize().height;
+void SetupBitmapComponent(
+	BitmapComponent* BitmapComponentToSetup,
+	ID2D1Bitmap* TextureAtlas,
+	SVector TextureAtlasCoordinates, 
+	bool DefineSourceByBitmapWidthHeight)
+{	
+	BitmapComponentToSetup->Bitmap = TextureAtlas;
+	
+	if (DefineSourceByBitmapWidthHeight)
+	{
+		// Set the bitmap source the same size as the full texture altas width and height
+		BitmapComponentToSetup->BitmapParams.BitmapSource.X = 
+			TextureAtlas->GetSize().width;
+		BitmapComponentToSetup->BitmapParams.BitmapSource.Y =
+			TextureAtlas->GetSize().height;
+	}
+	else
+	{
+		// Set the bitmap source the same size as the desired atlas coordinates 
+		// (a specific position on the texture atlas)
+		BitmapComponentToSetup->BitmapParams.BitmapSource.X = TextureAtlasCoordinates.X;
+		BitmapComponentToSetup->BitmapParams.BitmapSource.Y = TextureAtlasCoordinates.Y;
+	}
 
 	// Since computer graphics start from left to right
 	// "BitmapOffsetLeft" is not changed since default is at "0"
-	BitmapSetup.BitmapOffsetRight.X = BitmapSetup.BitmapSource.X;
-	BitmapSetup.BitmapOffsetRight.Y = BitmapSetup.BitmapSource.Y;
+	BitmapComponentToSetup->BitmapParams.BitmapOffsetRight.X = 
+		BitmapComponentToSetup->BitmapParams.BitmapSource.X;
+	BitmapComponentToSetup->BitmapParams.BitmapOffsetRight.Y = 
+		BitmapComponentToSetup->BitmapParams.BitmapSource.Y;
+}
 
-	return BitmapSetup;
+ID2D1Bitmap* FlipBitmap(
+	ID2D1Bitmap* BitmapToFlip, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer, bool Flip)
+{
+	return BitmapCreationSetup(BitmapToFlip, FileName, Renderer, Flip);
 }
 
 void SetBitmapSourceLocationX(
@@ -893,6 +930,35 @@ void InitializeAnimationFirstFrame(SAnimationParameters &AnimationParams,
 	UpdateAnimation(AnimationParams, BitmapSource, BitmapOffsetLeft, BitmapOffsetRight, 1);
 }
 
+void RenderBitmap(ID2D1HwndRenderTarget* Renderer, BitmapComponent* BitmapToRender)
+{
+	if (!BitmapToRender)
+	{
+		return;
+	}
+
+	D2D_RECT_F DestRect =
+		D2D1::RectF(
+		BitmapToRender->ComponentLocation.X,
+		BitmapToRender->ComponentLocation.Y,
+		BitmapToRender->ComponentLocation.X + BitmapToRender->BitmapParams.BitmapOffsetRight.X,
+		BitmapToRender->ComponentLocation.Y + BitmapToRender->BitmapParams.BitmapOffsetRight.Y);
+
+	D2D_RECT_F SourceRect =
+		D2D1::RectF(
+		BitmapToRender->BitmapParams.BitmapOffsetLeft.X,
+		BitmapToRender->BitmapParams.BitmapOffsetLeft.Y,
+		BitmapToRender->BitmapParams.BitmapSource.X,
+		BitmapToRender->BitmapParams.BitmapSource.Y);
+
+	Renderer->DrawBitmap(
+		BitmapToRender->Bitmap,
+		DestRect,
+		BitmapToRender->BitmapParams.Opacity,
+		D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+		SourceRect);
+}
+
 void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer, 
 	std::vector<BitmapComponent*> StoredBitmaps, int RenderLayer)
 {
@@ -910,26 +976,7 @@ void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer,
 		if (StoredBitmaps[i]->BitmapParams.RenderLayer != RenderLayer)
 			continue;
 
-		D2D_RECT_F DestRect =
-			D2D1::RectF(
-			StoredBitmaps[i]->ComponentLocation.X,
-			StoredBitmaps[i]->ComponentLocation.Y,
-			StoredBitmaps[i]->ComponentLocation.X + StoredBitmaps[i]->BitmapParams.BitmapOffsetRight.X,
-			StoredBitmaps[i]->ComponentLocation.Y + StoredBitmaps[i]->BitmapParams.BitmapOffsetRight.Y);
-
-		D2D_RECT_F SourceRect =
-			D2D1::RectF(
-			StoredBitmaps[i]->BitmapParams.BitmapOffsetLeft.X,
-			StoredBitmaps[i]->BitmapParams.BitmapOffsetLeft.Y,
-			StoredBitmaps[i]->BitmapParams.BitmapSource.X,
-			StoredBitmaps[i]->BitmapParams.BitmapSource.Y);
-
-		Renderer->DrawBitmap(
-			StoredBitmaps[i]->Bitmap,
-			DestRect,
-			StoredBitmaps[i]->BitmapParams.Opacity,
-			D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-			SourceRect);
+		RenderBitmap(Renderer, StoredBitmaps[i]);
 	}
 }
 
@@ -1291,6 +1338,7 @@ void InitializeEngine(VoodooEngine* Engine)
 	// Assign based on configuration file if editor mode is true/false
 	Engine->EditorMode = SetEditorMode();
 
+	// Set the app icon that is visible in task bar and window title bar
 	SetCustomAppIcon(Engine);
 
 	// Create engine mouse cursor
@@ -1303,12 +1351,16 @@ void InitializeEngine(VoodooEngine* Engine)
 	// Create the text format for the engine UI texts
 	CreateUITextFormat(Engine);
 	
+	// Set up the frequency (only need to do once)
 	QueryPerformanceFrequency(&Engine->TicksPerSecond);
+	// Set the start ticks for calculating frame rate
 	QueryPerformanceCounter(&Engine->StartTicks);
 
 	Engine->EngineRunning = true;
 
-	// Create level editor if in editor mode
+	// Create level editor if in editor mode 
+	// (no need to store the pointer, 
+	// since it will be kept in memory throughout the lifetime of the application)
 	if (Engine->EditorMode)
 	{
 		LevelEditor* LevelEditorInstance = new LevelEditor(Engine);
@@ -1329,8 +1381,9 @@ void RenderLevelEditor(VoodooEngine* Engine)
 
 void Render(VoodooEngine* Engine)
 {
-	// Only render one background at a time
-	RenderBitmaps(Engine->Renderer, Engine->StoredLevelBackgrounds, 1);
+	// Render the game background first (painter's algorithm)
+	RenderBitmap(Engine->Renderer, Engine->CurrentGameBackground);
+
 	// Render all bitmaps (from gameobjects) stored in engine
 	RenderBitmaps(Engine->Renderer, Engine->StoredBitmapComponents, RENDERLAYER_MAXNUM);
 	// Render all collision rects
@@ -1342,11 +1395,13 @@ void Render(VoodooEngine* Engine)
 	{
 		Engine->InterfaceObjects_Render[i]->OnRenderBroadcast(Engine->Renderer);
 	}
-
+	// Render editor related stuff
 	if (Engine->EditorMode)
 	{
 		RenderLevelEditor(Engine);
+		RenderUITextsRenderLayer(Engine);
 	}
+	// Render debug related stuff
 	if (Engine->DebugMode)
 	{
 		RenderCollisionRectangles(
@@ -1354,10 +1409,8 @@ void Render(VoodooEngine* Engine)
 		RenderBitmaps(
 			Engine->Renderer, Engine->StoredScreenPrintTexts);
 	}
-	
+	// This replaces the default windows system mouse cursor (it's hidden)
 	RenderCustomMouseCursor(Engine->Renderer, Engine);
-	
-	RenderUITextsRenderLayer(Engine);
 }
 
 void RunEngine(VoodooEngine* Engine)
