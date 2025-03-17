@@ -157,6 +157,8 @@ void BroadcastInput(std::vector<IInput*> StoredCallbacks, int Input, bool Presse
 	}
 }
 
+// Check if specific input is being pressed/released, 
+// returns false (not pressed) as default if no input is found
 bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck)
 {
 	int KeyToCheck = InputToCheck;
@@ -193,9 +195,9 @@ void RemoveUpdateComponent(UpdateComponent* Component, VoodooEngine* Engine)
 
 void RemoveInputCallback(IInput* Component, VoodooEngine* Engine)
 {
-	Engine->StoredInputCallbacks.erase(std::remove(
-		Engine->StoredInputCallbacks.begin(),
-		Engine->StoredInputCallbacks.end(), Component));
+	Engine->InterfaceObjects_InputCallback.erase(std::remove(
+		Engine->InterfaceObjects_InputCallback.begin(),
+		Engine->InterfaceObjects_InputCallback.end(), Component));
 }
 
 void ShiftBitmapToLetter(int LetterID, BitmapComponent* LetterBitmap, VoodooEngine* Engine)
@@ -618,10 +620,12 @@ void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
 	SetMouseColliderSize(Engine, MouseColliderSize);
 	Engine->StoredEditorCollisionComponents.push_back(&Engine->Mouse.MouseCollider);
 
-	Engine->Mouse.MouseBitmap.Bitmap = 
+	if (Engine->Mouse.MouseBitmap.Bitmap =
 		SetupBitmap(Engine->Mouse.MouseBitmap.Bitmap,
-		L"EngineContent/Cursor/CustomMouseCursor.png", Engine->Renderer);
-	SetupBitmapComponent(&Engine->Mouse.MouseBitmap, Engine->Mouse.MouseBitmap.Bitmap);
+		L"EngineContent/Cursor/CustomMouseCursor.png", Engine->Renderer))
+	{
+		SetupBitmapComponent(&Engine->Mouse.MouseBitmap, Engine->Mouse.MouseBitmap.Bitmap);
+	}
 
 	// Setup custom mouse cursor bitmap if found, otherwise render mouse collider instead
 	if (Engine->Mouse.MouseBitmap.Bitmap)
@@ -819,33 +823,44 @@ ID2D1Bitmap* SetupBitmap(
 void SetupBitmapComponent(
 	BitmapComponent* BitmapComponentToSetup,
 	ID2D1Bitmap* TextureAtlas,
-	SVector TextureAtlasCoordinates, 
-	bool DefineSourceByBitmapWidthHeight)
+	SVector TextureAtlasWidthHeight,
+	SVector TextureAtlasOffsetMultiplierWidthHeight,
+	bool UseEntireTextureAtlasAsBitmapSource)
 {	
 	BitmapComponentToSetup->Bitmap = TextureAtlas;
 	
-	if (DefineSourceByBitmapWidthHeight)
+	if (UseEntireTextureAtlasAsBitmapSource)
 	{
-		// Set the bitmap source the same size as the full texture altas width and height
+		// Set the bitmap source the same size as the entire texture altas
+		// (this is used for when there is a single texture instead of multiple "slots" in the texture atlas)
 		BitmapComponentToSetup->BitmapParams.BitmapSource.X = 
 			TextureAtlas->GetSize().width;
 		BitmapComponentToSetup->BitmapParams.BitmapSource.Y =
 			TextureAtlas->GetSize().height;
+
+		// Since computer graphics start from left to right
+		// "BitmapOffsetLeft" is not changed since default is at "0"
+		BitmapComponentToSetup->BitmapParams.BitmapOffsetRight.X =
+			BitmapComponentToSetup->BitmapParams.BitmapSource.X;
+		BitmapComponentToSetup->BitmapParams.BitmapOffsetRight.Y =
+			BitmapComponentToSetup->BitmapParams.BitmapSource.Y;
 	}
 	else
 	{
-		// Set the bitmap source the same size as the desired atlas coordinates 
-		// (a specific position on the texture atlas)
-		BitmapComponentToSetup->BitmapParams.BitmapSource.X = TextureAtlasCoordinates.X;
-		BitmapComponentToSetup->BitmapParams.BitmapSource.Y = TextureAtlasCoordinates.Y;
-	}
+		// Set the bitmap source the same size as the desired texture atlas "slot" width and height
+		BitmapComponentToSetup->BitmapParams.BitmapSource.X = TextureAtlasWidthHeight.X;
+		BitmapComponentToSetup->BitmapParams.BitmapSource.Y = TextureAtlasWidthHeight.Y;
 
-	// Since computer graphics start from left to right
-	// "BitmapOffsetLeft" is not changed since default is at "0"
-	BitmapComponentToSetup->BitmapParams.BitmapOffsetRight.X = 
-		BitmapComponentToSetup->BitmapParams.BitmapSource.X;
-	BitmapComponentToSetup->BitmapParams.BitmapOffsetRight.Y = 
-		BitmapComponentToSetup->BitmapParams.BitmapSource.Y;
+		// Offset the bitmap source to the desired location of the texture atlas
+		SetBitmapSourceLocationX(
+			BitmapComponentToSetup, 
+			TextureAtlasWidthHeight.X, 
+			TextureAtlasOffsetMultiplierWidthHeight.X);
+		SetBitmapSourceLocationY(
+			BitmapComponentToSetup,
+			TextureAtlasWidthHeight.Y,
+			TextureAtlasOffsetMultiplierWidthHeight.Y);
+	}
 }
 
 ID2D1Bitmap* FlipBitmap(
@@ -1043,9 +1058,18 @@ void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engi
 bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
 {
 	if (Sender->NoCollision || 
-		Target->NoCollision)
+		Target->NoCollision ||
+		Sender == Target)
 	{
 		return false;
+	}
+
+	for (int i = 0; i < Sender->CollisionTagsToIgnore.size(); i++)
+	{
+		if (Sender->CollisionTagsToIgnore[i] == Target->CollisionTag)
+		{
+			return false;
+		}
 	}
 
 	if (Sender->ComponentLocation.X < Target->ComponentLocation.X + Target->CollisionRect.X &&
@@ -1426,4 +1450,103 @@ void RunEngine(VoodooEngine* Engine)
 	Engine->Renderer->Clear(Engine->ClearScreenColor);
 	Render(Engine);
 	Engine->Renderer->EndDraw();
+}
+
+float Interpolate(float Current, float Target, float DeltaTime, float Speed)
+{
+	return Current + DeltaTime * (Current - Target) * Speed;
+}
+
+SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent* MoveComp, VoodooEngine* Engine)
+{
+	float MovementMultiplierX = 
+		MoveComp->MovementDirection.X * MoveComp->MovementSpeed * Engine->DeltaTime;
+	float MovementMultiplierY = 
+		MoveComp->MovementDirection.Y * MoveComp->MovementSpeed * Engine->DeltaTime;
+	SVector NewLocation = ComponentOwner->Location;
+
+	// X Axis
+	if (MoveComp->MovementDirection.X != 0)
+	{
+		if (MoveComp->MovementDirection.X < 0 &&
+			!MoveComp->QuadCollisionParams.CollisionHitLeft)
+		{
+			NewLocation.X += MovementMultiplierX;
+		}
+		if (MoveComp->MovementDirection.X > 0 &&
+			!MoveComp->QuadCollisionParams.CollisionHitRight)
+		{
+			NewLocation.X += MovementMultiplierX;
+		}
+	}
+	// Y Axis
+	if (MoveComp->MovementDirection.Y != 0)
+	{
+		if (MoveComp->MovementDirection.Y < 0 &&
+			!MoveComp->QuadCollisionParams.CollisionHitUp)
+		{
+			NewLocation.Y += MovementMultiplierY;
+		}
+		if (MoveComp->MovementDirection.Y > 0 &&
+			!MoveComp->QuadCollisionParams.CollisionHitDown)
+		{
+			NewLocation.Y += MovementMultiplierY;
+		}
+	}
+
+	// Set the default collision detected to false
+	MoveComp->QuadCollisionParams.CollisionHitLeft = false;
+	MoveComp->QuadCollisionParams.CollisionHitRight = false;
+	MoveComp->QuadCollisionParams.CollisionHitUp = false;
+	MoveComp->QuadCollisionParams.CollisionHitDown = false;
+
+	// Check for collision
+	for (int i = 0; i < Engine->StoredCollisionComponents.size(); i++)
+	{
+		// Collision detected left
+		if (IsCollisionDetected(
+			&MoveComp->QuadCollisionParams.CollisionLeft, Engine->StoredCollisionComponents[i]))
+		{
+			MoveComp->QuadCollisionParams.CollisionHitLeft = true;
+		}
+		// Collision detected right
+		if (IsCollisionDetected(
+			&MoveComp->QuadCollisionParams.CollisionRight, Engine->StoredCollisionComponents[i]))
+		{
+			MoveComp->QuadCollisionParams.CollisionHitRight = true;
+		}
+		// Collision detected up
+		if (IsCollisionDetected(
+			&MoveComp->QuadCollisionParams.CollisionUp, Engine->StoredCollisionComponents[i]))
+		{
+			MoveComp->QuadCollisionParams.CollisionHitUp = true;
+		}
+		// Collision detected down
+		if (IsCollisionDetected(
+			&MoveComp->QuadCollisionParams.CollisionDown, Engine->StoredCollisionComponents[i]))
+		{
+			MoveComp->QuadCollisionParams.CollisionHitDown = true;
+		}
+
+		ComponentOwner->Location.X = NewLocation.X;
+		ComponentOwner->GameObjectBitmap.ComponentLocation.X = NewLocation.X;
+
+		ComponentOwner->Location.Y = NewLocation.Y;
+		ComponentOwner->GameObjectBitmap.ComponentLocation.Y = NewLocation.Y;
+		
+		ComponentOwner->AssetCollision.ComponentLocation.X = NewLocation.X;
+		ComponentOwner->AssetCollision.ComponentLocation.Y = NewLocation.Y;
+
+		MoveComp->UpdateMovement(NewLocation);
+	}
+
+	return NewLocation;
+}
+
+SVector AddMovementAI(AIComponent* AIComp)
+{
+	SVector NewLocation;
+
+
+	return NewLocation;
 }

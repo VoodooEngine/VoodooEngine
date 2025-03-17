@@ -119,9 +119,6 @@ class IInput
 public:
 	virtual void OnInputBroadcast(int Input, bool Pressed){};
 };
-// Check if specfific input is being pressed/released, 
-// returns false (not pressed) as default if no input is found
-extern "C" VOODOOENGINE_API bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck);
 // Sends input broadcast to all listeners whenever an input is pressed, 
 // input type ID is set by specific game
 extern "C" VOODOOENGINE_API void BroadcastInput(
@@ -204,8 +201,9 @@ extern "C" VOODOOENGINE_API ID2D1Bitmap* SetupBitmap(
 extern "C" VOODOOENGINE_API void SetupBitmapComponent(
 	BitmapComponent* BitmapComponentToSetup,
 	ID2D1Bitmap* TextureAtlas,
-	SVector TextureAtlasCoordinates = {},
-	bool DefineSourceByBitmapWidthHeight = true);
+	SVector TextureAtlasWidthHeight = {},
+	SVector TextureAtlasOffsetMultiplierWidthHeight = {},
+	bool UseEntireTextureAtlasAsBitmapSource = true);
 
 // Set the bitmap source location on the bitmap image, 
 // use multiplier if you want to offset bitmap source X axis
@@ -428,14 +426,16 @@ public:
 struct SAssetParameters
 {
 	ID2D1Bitmap* TextureAtlas = nullptr;
-	SVector TextureAltasCoordinates = { 0, 0 };
+	SVector TextureAtlasWidthHeight = { 0, 0 };
+	SVector TextureAtlasOffsetMultiplierWidthHeight = { 1, 1 };
 	int RenderLayer = 0;
 	bool CreateDefaultAssetCollision = false;
+	// Default to asset button empty thumbnail, can be overriden
 	const wchar_t* EditorAssetButtonThumbnailFilePath = L"EngineContent/LevelEditor/AssetButtonBase.png";
 };
 // Asset button struct (used by level editor)
 // PLEASE NOTE: Only numbers as "0" and up can be accounted for as ID numbers for assets 
-// (since the level editor use negative numbers as ID)
+// (since the level editor use negative numbers as ID for internal level editor stuff)
 struct SAssetButton
 {
 	Button* AssetButton = nullptr;
@@ -470,6 +470,9 @@ public:
 	ID2D1HwndRenderTarget* Renderer = nullptr;
 	D2D1_COLOR_F ClearScreenColor = { 0, 0, 0 };
 
+	// Level editor gizmo
+	int LevelEditorGizmoSnapSize = 10;
+
 	// Resolution of the screen
 	int ScreenWidthDefault = 1920;
 	int ScreenHeightDefault = 1080;
@@ -478,7 +481,7 @@ public:
 	LARGE_INTEGER StartTicks;
 	LARGE_INTEGER TicksPerSecond;
 	LARGE_INTEGER CurrentTicks;
-	int FPS = 70;
+	int FPS = 100;
 	int FrameTargetTime = (1000 / FPS);
 	int PreviousFrameTime = 0;
 	int TimeToWait = 0;
@@ -490,27 +493,50 @@ public:
 	char FileName[100];
 	void(*AssetLoadFunctionPointer)(int, SVector);
 
-	// Interface objects
 	std::vector<IRender*> InterfaceObjects_Render;
+	std::vector<IInput*> InterfaceObjects_InputCallback;
+
+	// Player instance game object
+	GameObject* PlayerInstance = nullptr;
 
 	// Game background
 	BitmapComponent* CurrentGameBackground = nullptr;
+	std::vector<BitmapComponent*> StoredGameBackgrounds;
 
-	// Stored objects
-	std::vector<UpdateComponent*> StoredUpdateComponents;
-	std::vector<CollisionComponent*> StoredCollisionComponents;
-	std::vector<BitmapComponent*> StoredBitmapComponents;
-	std::vector<IInput*> StoredInputCallbacks;
-	std::vector<GameStateCallback*> StoredGameStateCallbacks;
-	std::vector<GameObject*> StoredGameObjects;
+	// The asset parameter struct contains variables in this order:
+	// ID2D1Bitmap* TextureAtlas
+	// SVector TextureAtlasWidthHeight
+	// SVector TextureAtlasOffsetMultiplierWidthHeight
+	// int RenderLayer
+	// bool CreateDefaultAssetCollision
+	// const wchar_t* EditorAssetButtonThumbnailFilePath
 	std::map<int, SAssetParameters> StoredGameObjectIDs;
 	
-	// Used to store buttons information 
-	// (can be used for both in game UI and editor UI buttons)
-	std::vector<BitmapComponent*> StoredButtonBitmapComponents;
+	// Stored game object related vectors
+	std::vector<BitmapComponent*> StoredBitmapComponents;
+	std::vector<CollisionComponent*> StoredCollisionComponents;
+	std::vector<GameObject*> StoredGameObjects;
+	std::vector<UpdateComponent*> StoredUpdateComponents;
+
+	// Used only for screen debug print
+	std::vector<BitmapComponent*> StoredScreenPrintTexts;
+	
+	// This keeps track of the number of console text prints have been printed
+	// (Offsets a newly printed text down a column if text in column already has been printed)
+	// Will reset once console window is deleted
+	int ScreenPrintTextColumnsPrinted = 0;
+
+	// This determines the letter space for any texts created
+	int LetterSpace = 12;
+
+	// Only used in level editor mode 
+	SVector AssetButtonThumbnailDimensions = { 90, 90 };
 	std::vector<BitmapComponent*> StoredButtonTexts;
-	std::vector<CollisionComponent*> StoredEditorCollisionComponents;
 	std::vector<SAssetButton> StoredButtonAssets;
+	std::vector<BitmapComponent*> StoredEditorBitmapComponents;
+	std::vector<BitmapComponent*> StoredButtonBitmapComponents;
+	std::vector<CollisionComponent*> StoredEditorCollisionComponents;
+	std::vector<UpdateComponent*> StoredEditorUpdateComponents;
 
 	// Default collision rect color for editor mode assets
 	SColor EditorCollisionRectColor = { 200, 0, 255 };
@@ -524,11 +550,6 @@ public:
 	SColor ColorCyan = { 0, 255, 255 };
 	SColor ColorYellow = { 255, 255, 0 };
 
-	// Only used in level editor mode
-	SVector AssetButtonThumbnailDimensions = { 90, 90 };
-	std::vector<UpdateComponent*> StoredEditorUpdateComponents;
-	std::vector<BitmapComponent*> StoredEditorBitmapComponents;
-
 	// Variables used by direct write to display UI text, 
 	// they will be created and be available for the remainder of the program
 	IDWriteTextFormat* TextFormat = nullptr;
@@ -536,16 +557,6 @@ public:
 	ID2D1SolidColorBrush* WhiteBrush = nullptr;
 	// Used to store all UI text for render layers using directwrite
 	std::map<int, UITextParameters> StoredRenderLayerUITexts;
-
-	// Used only for screen debug print
-	std::vector<BitmapComponent*> StoredScreenPrintTexts;
-	// This keeps track of the number of console text prints have been printed
-	// (Offsets a newly printed text down a column if text in column already has been printed)
-	// Will reset once console window is deleted
-	int ScreenPrintTextColumnsPrinted = 0;
-
-	// This determines the letter space for any texts created
-	int LetterSpace = 12;
 
 	// Clear all debug text from screen
 	static void ClearScreenPrint(VoodooEngine* Engine)
@@ -574,9 +585,9 @@ public:
 
 	static void CallMouseInputCallback(int MouseButton, bool Pressed)
 	{
-		for (int i = 0; i < VoodooEngine::Engine->StoredInputCallbacks.size(); i++)
+		for (int i = 0; i < VoodooEngine::Engine->InterfaceObjects_InputCallback.size(); i++)
 		{
-			VoodooEngine::Engine->StoredInputCallbacks[i]->OnInputBroadcast(MouseButton, Pressed);
+			VoodooEngine::Engine->InterfaceObjects_InputCallback[i]->OnInputBroadcast(MouseButton, Pressed);
 		}
 	}
 
@@ -610,10 +621,10 @@ public:
 		switch (Message)
 		{
 		case WM_KEYDOWN:
-			BroadcastInput(VoodooEngine::Engine->StoredInputCallbacks, WParam, true);
+			BroadcastInput(VoodooEngine::Engine->InterfaceObjects_InputCallback, WParam, true);
 			break;
 		case WM_KEYUP:
-			BroadcastInput(VoodooEngine::Engine->StoredInputCallbacks, WParam, false);
+			BroadcastInput(VoodooEngine::Engine->InterfaceObjects_InputCallback, WParam, false);
 			break;
 		default:
 			break;
@@ -670,6 +681,10 @@ public:
 		for (int i = 0; i < StoredGameObjects.size(); i++)
 		{
 			StoredGameObjects[i]->OnGameStart();
+			if (!StoredGameObjects[i]->CreateDefaultAssetCollisionInGame)
+			{
+				StoredGameObjects[i]->AssetCollision.NoCollision = true;
+			}
 		}
 	}
 	void EndGame()
@@ -678,16 +693,34 @@ public:
 		for (int i = 0; i < StoredGameObjects.size(); i++)
 		{
 			StoredGameObjects[i]->OnGameEnd();
+			if (!StoredGameObjects[i]->CreateDefaultAssetCollisionInGame)
+			{
+				StoredGameObjects[i]->AssetCollision.NoCollision = false;
+			}
+		}
+
+		if (PlayerInstance)
+		{
+			DeleteGameObject(PlayerInstance);
+			PlayerInstance = nullptr;
 		}
 	}
+
+	template<class T>
+	void RemoveComponent(T* ObjectToRemove, std::vector<T*> *VectorToRemoveFrom)
+	{
+		VectorToRemoveFrom->erase(std::remove(
+			VectorToRemoveFrom->begin(),
+			VectorToRemoveFrom->end(), ObjectToRemove));
+	};
 
 	// Creates an instance game object based on class to spawn/asset ID
 	// if no valid ID is found, then no object will be created and nullptr is returned
 	// if valid ID the created object is returned
 	template<class T>
-	T* CreateGameObject(T* ClassToSpawn, int AssetID, SVector SpawnLocation)
+	T* CreateGameObject(T* ClassToSpawn, int GameObjectID, SVector SpawnLocation)
 	{
-		auto Iterator = StoredGameObjectIDs.find(AssetID);
+		auto Iterator = StoredGameObjectIDs.find(GameObjectID);
 
 		// If object id is not found, invalidate and return nullptr
 		if (Iterator == StoredGameObjectIDs.end())
@@ -696,30 +729,28 @@ public:
 			return nullptr;
 		}
 
-		SVector AssetBitmapSource = Iterator->second.TextureAltasCoordinates;
-		bool CreateAssetCollision = Iterator->second.CreateDefaultAssetCollision;
-		int AssignedRenderLayer = Iterator->second.RenderLayer;
-
 		StoredGameObjects.push_back(new T);
 		StoredGameObjects.back()->Location = SpawnLocation;
-		StoredGameObjects.back()->GameObjectID = AssetID;
-		StoredGameObjects.back()->CreateDefaultAssetCollisionInGame = CreateAssetCollision; 
-		SetupBitmapComponent(
-			&StoredGameObjects.back()->GameObjectBitmap, 
-			Iterator->second.TextureAtlas, AssetBitmapSource, false);
-		StoredGameObjects.back()->GameObjectBitmap.BitmapParams.RenderLayer = AssignedRenderLayer;
+		StoredGameObjects.back()->GameObjectID = GameObjectID;
+		StoredGameObjects.back()->CreateDefaultAssetCollisionInGame = 
+			Iterator->second.CreateDefaultAssetCollision;
+		SetupBitmapComponent(&StoredGameObjects.back()->GameObjectBitmap, 
+			Iterator->second.TextureAtlas, 
+			Iterator->second.TextureAtlasWidthHeight, 
+			Iterator->second.TextureAtlasOffsetMultiplierWidthHeight, false);
+		StoredGameObjects.back()->GameObjectBitmap.BitmapParams.RenderLayer = Iterator->second.RenderLayer;
 		StoredGameObjects.back()->GameObjectBitmap.ComponentLocation = SpawnLocation;
 		StoredBitmapComponents.push_back(&StoredGameObjects.back()->GameObjectBitmap);
 
 		// If in editor mode, create a clickable collision rect for the spawned game object 
 		// in order for it to be selectable in the level editor
-		if (EditorMode || CreateAssetCollision)
+		if (EditorMode || 
+			Iterator->second.CreateDefaultAssetCollision)
 		{
 			StoredGameObjects.back()->AssetCollision.CollisionRect = 
-				{ StoredGameObjects.back()->GameObjectBitmap.BitmapParams.BitmapSource.X,
-				StoredGameObjects.back()->GameObjectBitmap.BitmapParams.BitmapSource.Y };
+				{ Iterator->second.TextureAtlasWidthHeight.X, Iterator->second.TextureAtlasWidthHeight.Y };
 			StoredGameObjects.back()->AssetCollision.ComponentLocation = SpawnLocation;
-			StoredGameObjects.back()->AssetCollision.CollisionTag = AssetID;
+			StoredGameObjects.back()->AssetCollision.CollisionTag = GameObjectID;
 			StoredGameObjects.back()->AssetCollision.Owner = StoredGameObjects.back();
 			// Only set to render collision rect if in debug mode
 			if (DebugMode)
@@ -732,6 +763,7 @@ public:
 		StoredGameObjects.back()->OnGameObjectCreated(SpawnLocation);
 		return (T*)(StoredGameObjects.back());
 	};
+	
 	// Removes game object from memory
 	// before it gets deleted a custom deconstructor "OnGameObjectDeleted"
 	// (virtual function, not pure but optional) is called
@@ -739,13 +771,15 @@ public:
 	// returns nullptr
 	template <class T> 
 	T* DeleteGameObject(T* ClassToDelete)
-	{
-		RemoveBitmapComponent(&ClassToDelete->GameObjectBitmap, this);
-		RemoveCollisionComponent(&ClassToDelete->AssetCollision, this);
-		
-		StoredGameObjects.erase(std::remove(
-			StoredGameObjects.begin(),
-			StoredGameObjects.end(), ClassToDelete));
+	{		
+		RemoveComponent(&ClassToDelete->GameObjectBitmap, &this->StoredBitmapComponents);
+		RemoveComponent(ClassToDelete, &this->StoredGameObjects);
+
+		if (EditorMode ||
+			ClassToDelete->CreateDefaultAssetCollisionInGame)
+		{
+			RemoveComponent(&ClassToDelete->AssetCollision, &this->StoredCollisionComponents);
+		}
 
 		// Custom optional deconstructor called before delete
 		// in case for example you want to delete anything custom made
@@ -756,6 +790,7 @@ public:
 		ClassToDelete = nullptr;
 		return nullptr;
 	};
+
 	void DeleteAllGameObjects()
 	{
 		while (!StoredGameObjects.empty())
@@ -772,10 +807,134 @@ public:
 		std::vector<BitmapComponent*>().swap(StoredBitmapComponents);
 		std::vector<CollisionComponent*>().swap(StoredCollisionComponents);
 		std::vector<GameObject*>().swap(StoredGameObjects);
+
+		PlayerInstance = nullptr;
 	};
 
 private:
 	std::map<int, bool> StoredInputs;
+};
+
+// Used to setup check for collision detection on left, right, up and down sides of a game object 
+struct SQuadCollisionParameters
+{
+	CollisionComponent CollisionLeft;
+	CollisionComponent CollisionRight;
+	CollisionComponent CollisionUp;
+	CollisionComponent CollisionDown;
+
+	SVector RectSizeCollisionLeft;
+	SVector RectSizeCollisionRight;
+	SVector RectSizeCollisionUp;
+	SVector RectSizeCollisionDown;
+
+	SVector RelativeOffsetCollisionLeft;
+	SVector RelativeOffsetCollisionRight;
+	SVector RelativeOffsetCollisionUp;
+	SVector RelativeOffsetCollisionDown;
+
+	bool CollisionHitLeft = false;
+	bool CollisionHitRight = false;
+	bool CollisionHitUp = false;
+	bool CollisionHitDown = false;
+};
+
+class MovementComponent
+{
+public:	
+	SVector MovementDirection;
+	float MovementSpeed = 0;
+	SQuadCollisionParameters QuadCollisionParams;
+
+	void InitializeMovementComponent(
+		SQuadCollisionParameters DesiredQuadCollisionParams, 
+		float DesiredMovementSpeed, VoodooEngine* Engine)
+	{
+		InitializeCollisionRectangles(DesiredQuadCollisionParams, Engine);
+
+		MovementSpeed = DesiredMovementSpeed;
+	}
+
+	void UpdateMovement(SVector NewLocation)
+	{
+		UpdateCollisionRectsLocation(NewLocation);
+	}
+
+	void RemoveMovementComponent(VoodooEngine* Engine)
+	{
+		Engine->RemoveComponent(
+			&QuadCollisionParams.CollisionLeft, &Engine->StoredCollisionComponents);
+		Engine->RemoveComponent(
+			&QuadCollisionParams.CollisionRight, &Engine->StoredCollisionComponents);
+		Engine->RemoveComponent(
+			&QuadCollisionParams.CollisionUp, &Engine->StoredCollisionComponents);
+		Engine->RemoveComponent(
+			&QuadCollisionParams.CollisionDown, &Engine->StoredCollisionComponents);
+	}
+
+private:
+	void InitializeCollisionRectangles(
+		SQuadCollisionParameters DesiredQuadCollisionParams, VoodooEngine* Engine)
+	{
+		if (Engine->DebugMode)
+		{
+			QuadCollisionParams.CollisionLeft.RenderCollisionRect = true;
+			QuadCollisionParams.CollisionRight.RenderCollisionRect = true;
+			QuadCollisionParams.CollisionUp.RenderCollisionRect = true;
+			QuadCollisionParams.CollisionDown.RenderCollisionRect = true;
+
+			QuadCollisionParams.CollisionLeft.CollisionRectColor = Engine->ColorYellow;
+			QuadCollisionParams.CollisionRight.CollisionRectColor = Engine->ColorYellow;
+			QuadCollisionParams.CollisionUp.CollisionRectColor = Engine->ColorYellow;
+			QuadCollisionParams.CollisionDown.CollisionRectColor = Engine->ColorYellow;
+		}
+
+		QuadCollisionParams.CollisionLeft.CollisionRect = 
+			DesiredQuadCollisionParams.RectSizeCollisionLeft;
+		QuadCollisionParams.CollisionRight.CollisionRect =
+			DesiredQuadCollisionParams.RectSizeCollisionRight;
+		QuadCollisionParams.CollisionUp.CollisionRect =
+			DesiredQuadCollisionParams.RectSizeCollisionUp;
+		QuadCollisionParams.CollisionDown.CollisionRect =
+			DesiredQuadCollisionParams.RectSizeCollisionDown;
+
+		QuadCollisionParams.RelativeOffsetCollisionLeft =
+			DesiredQuadCollisionParams.RelativeOffsetCollisionLeft;
+		QuadCollisionParams.RelativeOffsetCollisionRight =
+			DesiredQuadCollisionParams.RelativeOffsetCollisionRight;
+		QuadCollisionParams.RelativeOffsetCollisionUp =
+			DesiredQuadCollisionParams.RelativeOffsetCollisionUp;
+		QuadCollisionParams.RelativeOffsetCollisionDown =
+			DesiredQuadCollisionParams.RelativeOffsetCollisionDown;
+
+		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionLeft);
+		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionRight);
+		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionUp);
+		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionDown);
+	}
+
+	void UpdateCollisionRectsLocation(SVector NewLocation)
+	{
+		QuadCollisionParams.CollisionLeft.ComponentLocation.X =
+			NewLocation.X + QuadCollisionParams.RelativeOffsetCollisionLeft.X;
+		QuadCollisionParams.CollisionLeft.ComponentLocation.Y =
+			NewLocation.Y + QuadCollisionParams.RelativeOffsetCollisionLeft.Y;
+
+		QuadCollisionParams.CollisionRight.ComponentLocation.X =
+			NewLocation.X + QuadCollisionParams.RelativeOffsetCollisionRight.X;
+		QuadCollisionParams.CollisionRight.ComponentLocation.Y =
+			NewLocation.Y + QuadCollisionParams.RelativeOffsetCollisionRight.Y;
+
+		QuadCollisionParams.CollisionUp.ComponentLocation.X =
+			NewLocation.X + QuadCollisionParams.RelativeOffsetCollisionUp.X;
+		QuadCollisionParams.CollisionUp.ComponentLocation.Y =
+			NewLocation.Y + QuadCollisionParams.RelativeOffsetCollisionUp.Y;
+
+		QuadCollisionParams.CollisionDown.ComponentLocation.X =
+			NewLocation.X + QuadCollisionParams.RelativeOffsetCollisionDown.X;
+		QuadCollisionParams.CollisionDown.ComponentLocation.Y =
+			NewLocation.Y + QuadCollisionParams.RelativeOffsetCollisionDown.Y;
+	}
 };
 
 // Custom mouse cursor related
@@ -831,6 +990,9 @@ struct SEditorAssetList
 	//-----------------
 };
 
+// PLEASE NOTE! ALL THESE REMOVE COMPONENT FUNCTIONS ARE DEPRECIATED 
+// AND REPLACED WITH "RemoveComponent" template function residing in engine class
+// DELETE THESE FUNCTIONS LATER WHEN YOU HAVE CONFIRMED THAT THE TEMPLATE FUNCTION WORKS
 //---------------------
 // Remove bitmap component from "StoredBitmapComponents" 
 extern "C" VOODOOENGINE_API void RemoveBitmapComponent(BitmapComponent* Component, VoodooEngine* Engine);
@@ -838,8 +1000,9 @@ extern "C" VOODOOENGINE_API void RemoveBitmapComponent(BitmapComponent* Componen
 extern "C" VOODOOENGINE_API void RemoveCollisionComponent(CollisionComponent* Component, VoodooEngine* Engine);
 // Remove update component from "StoredUpdateComponents"
 extern "C" VOODOOENGINE_API void RemoveUpdateComponent(UpdateComponent* Component, VoodooEngine* Engine);
-// Remove input callback component from "StoredInputCallbacks"
+// Remove input callback component from "InterfaceObjects_InputCallback"
 extern "C" VOODOOENGINE_API void RemoveInputCallback(IInput* Component, VoodooEngine* Engine);
+//----------------------------------------------
 
 // Create the text format to be used by all direct write IU text for the remainder of the program
 extern "C" VOODOOENGINE_API void CreateUITextFormat(VoodooEngine* Engine);
@@ -867,7 +1030,6 @@ public:
 	bool GizmoMouseHover = false;
 	bool CanDragGizmo = false;
 	SVector MouseClickLocationOffset;
-	int GizmoSnapSize = 10;
 	float GizmoCollisionRectSize = 70;
 	bool RenderGizmoCollisionRect = false;
 
@@ -895,7 +1057,7 @@ public:
 		Engine->StoredEditorUpdateComponents.push_back(this);
 		Engine->StoredEditorBitmapComponents.push_back(&GizmoBitmap);
 		Engine->StoredEditorCollisionComponents.push_back(&GizmoCollision);
-		Engine->StoredInputCallbacks.push_back(this);
+		Engine->InterfaceObjects_InputCallback.push_back(this);
 	};
 
 	void InitGizmoLocation(SVector NewLocation)
@@ -930,10 +1092,10 @@ public:
 		{
 			Location.X =
 				(int)((Engine->Mouse.Location.X +
-				MouseClickLocationOffset.X) / GizmoSnapSize) * GizmoSnapSize;
+				MouseClickLocationOffset.X) / Engine->LevelEditorGizmoSnapSize) * Engine->LevelEditorGizmoSnapSize;
 			Location.Y =
 				(int)((Engine->Mouse.Location.Y +
-				MouseClickLocationOffset.Y) / GizmoSnapSize) * GizmoSnapSize;
+				MouseClickLocationOffset.Y) / Engine->LevelEditorGizmoSnapSize) * Engine->LevelEditorGizmoSnapSize;
 		}
 	};
 
@@ -1155,8 +1317,8 @@ public:
 	SVector GetGizmoOffsetLocation()
 	{
 		SVector OffsetLocation = 
-		{ (SelectedGameObject->GameObjectBitmap.BitmapParams.BitmapSource.X / 2) - 10,
-			(SelectedGameObject->GameObjectBitmap.BitmapParams.BitmapSource.Y / 2) -
+		{ (SelectedGameObject->AssetCollision.CollisionRect.X / 2) - 10,
+			(SelectedGameObject->AssetCollision.CollisionRect.Y / 2) -
 			GizmoBitmap.BitmapParams.BitmapSource.Y + 10 };
 
 		return OffsetLocation;
@@ -1308,7 +1470,7 @@ public:
 		Engine->StoredEditorUpdateComponents.push_back(this);
 
 		// Add input callback for level editor
-		Engine->StoredInputCallbacks.push_back(this);
+		Engine->InterfaceObjects_InputCallback.push_back(this);
 
 		// Create level editor UI
 		LevelEditorUITop.Bitmap = SetupBitmap(LevelEditorUITop.Bitmap, Asset.LevelEditorUITop, Engine->Renderer);
@@ -2092,3 +2254,49 @@ extern "C" VOODOOENGINE_API void InitializeWindow(
 extern "C" VOODOOENGINE_API void InitializeEngine(VoodooEngine* Engine);
 // Run the engine game loop
 extern "C" VOODOOENGINE_API void RunEngine(VoodooEngine* Engine);
+
+// Smooth interpolation from point A to B
+extern "C" VOODOOENGINE_API float Interpolate(float Current, float Target, float DeltaTime, float Speed);
+
+// Character stuff
+//---------------------
+class Character : public GameObject, public UpdateComponent
+{
+public:
+	void OnGameObjectCreated(SVector SpawnLocation)
+	{
+		VoodooEngine::Engine->StoredUpdateComponents.push_back(this);
+		OnGameObjectCreatedOverride(SpawnLocation);
+	}
+	void OnGameObjectDeleted()
+	{
+		VoodooEngine::Engine->RemoveComponent(
+			(UpdateComponent*)this, &VoodooEngine::Engine->StoredUpdateComponents);
+		OnGameObjectDeletedOverride();
+	}
+private:
+	virtual void OnGameObjectCreatedOverride(SVector SpawnLocation){};
+	virtual void OnGameObjectDeletedOverride(){};
+};
+
+// AI component that is used for directing AI characters
+class AIComponent
+{
+public:
+
+};
+
+// Add movement input to game object. 
+// Built in collision detection is provided,
+// if you set up the "QuadCollisionParameters" struct within "MovementComponent".
+// Returns new movement location
+extern "C" VOODOOENGINE_API SVector AddMovementInput(
+	GameObject* ComponentOwner, MovementComponent* MoveComp, VoodooEngine* Engine);
+
+// Add AI movement to game object,
+// If using AI then this will add movement to AI character using the assigned movement direction,
+// built in collision where AI will stop and only resume movement until collision is not detected.
+// Can assign what should be able to collide with AI and also connect an "OnCollided" event,
+// returns new movement location
+extern "C" VOODOOENGINE_API SVector AddMovementAI(AIComponent* AIComp);
+//---------------------
