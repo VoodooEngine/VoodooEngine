@@ -246,7 +246,7 @@ extern "C" VOODOOENGINE_API void UpdateAnimation(
 // to use it, call this function inside "OnGameObjectSetupCompleted" virtual function in any gameobject 
 // (used for when an object is created before activation of update component, 
 // to make sure animation spritesheet bitmap gets framed with the first animation frame)
-extern "C" VOODOOENGINE_API void InitializeAnimationFirstFrame(
+extern "C" VOODOOENGINE_API void InitAnimationFirstFrame(
 	SAnimationParameters& AnimationParams, 
 	SVector& BitmapSource, SVector& BitmapOffsetLeft, SVector& BitmapOffsetRight);
 //---------------------
@@ -496,12 +496,8 @@ public:
 	std::vector<IRender*> InterfaceObjects_Render;
 	std::vector<IInput*> InterfaceObjects_InputCallback;
 
-	// Player instance game object
-	GameObject* PlayerInstance = nullptr;
-
 	// Game background
 	BitmapComponent* CurrentGameBackground = nullptr;
-	std::vector<BitmapComponent*> StoredGameBackgrounds;
 
 	// The asset parameter struct contains variables in this order:
 	// ID2D1Bitmap* TextureAtlas
@@ -698,12 +694,6 @@ public:
 				StoredGameObjects[i]->AssetCollision.NoCollision = false;
 			}
 		}
-
-		if (PlayerInstance)
-		{
-			DeleteGameObject(PlayerInstance);
-			PlayerInstance = nullptr;
-		}
 	}
 
 	template<class T>
@@ -807,8 +797,6 @@ public:
 		std::vector<BitmapComponent*>().swap(StoredBitmapComponents);
 		std::vector<CollisionComponent*>().swap(StoredCollisionComponents);
 		std::vector<GameObject*>().swap(StoredGameObjects);
-
-		PlayerInstance = nullptr;
 	};
 
 private:
@@ -845,12 +833,14 @@ public:
 	SVector MovementDirection;
 	float MovementSpeed = 0;
 	SQuadCollisionParameters QuadCollisionParams;
+	bool IsJumping = false;
+	bool IsFalling = false;
 
-	void InitializeMovementComponent(
+	void InitMovementComponent(
 		SQuadCollisionParameters DesiredQuadCollisionParams, 
 		float DesiredMovementSpeed, VoodooEngine* Engine)
 	{
-		InitializeCollisionRectangles(DesiredQuadCollisionParams, Engine);
+		InitCollisionRectangles(DesiredQuadCollisionParams, Engine);
 
 		MovementSpeed = DesiredMovementSpeed;
 	}
@@ -873,7 +863,7 @@ public:
 	}
 
 private:
-	void InitializeCollisionRectangles(
+	void InitCollisionRectangles(
 		SQuadCollisionParameters DesiredQuadCollisionParams, VoodooEngine* Engine)
 	{
 		if (Engine->DebugMode)
@@ -1742,9 +1732,11 @@ public:
 			LevelEditorUITop.BitmapParams.HiddenInGame = true;
 			LevelEditorUIOverlay.BitmapParams.HiddenInGame = true;
 			UpdateAllButtonsState(EButtonState::Hidden);
+			SetMouseState(false, Engine);
 		}
 		else if (!Hide)
 		{
+			SetMouseState(true, Engine);
 			LevelEditorVisible = true;
 			LevelEditorUITop.BitmapParams.HiddenInGame = false;
 			if (!Engine->GameRunning)
@@ -2242,7 +2234,7 @@ private:
 extern "C" VOODOOENGINE_API void SetFPSLimit(VoodooEngine* Engine, float FPSLimit);
 
 // Setup the application window and renderer
-extern "C" VOODOOENGINE_API void InitializeWindow(
+extern "C" VOODOOENGINE_API void InitWindow(
 	VoodooEngine* Engine,
 	LPCWSTR WindowTitle,
 	WNDPROC WindowProcedure,
@@ -2251,7 +2243,7 @@ extern "C" VOODOOENGINE_API void InitializeWindow(
 	bool WindowFullScreen = true);
 
 // Setup the engine 
-extern "C" VOODOOENGINE_API void InitializeEngine(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void InitEngine(VoodooEngine* Engine);
 // Run the engine game loop
 extern "C" VOODOOENGINE_API void RunEngine(VoodooEngine* Engine);
 
@@ -2279,24 +2271,28 @@ private:
 	virtual void OnGameObjectDeletedOverride(){};
 };
 
-// AI component that is used for directing AI characters
+// AI component that is used for directing AI characters 
 class AIComponent
 {
 public:
 
 };
 
+// Add gravity to movement (only on Y axis)
+extern "C" VOODOOENGINE_API float AddGravity(
+	GameObject* ComponentOwner, MovementComponent& MoveComp, float GravityScale, float DeltaTime);
+
 // Add movement input to game object. 
 // Built in collision detection is provided,
 // if you set up the "QuadCollisionParameters" struct within "MovementComponent".
 // Returns new movement location
 extern "C" VOODOOENGINE_API SVector AddMovementInput(
-	GameObject* ComponentOwner, MovementComponent* MoveComp, VoodooEngine* Engine);
+	GameObject* ComponentOwner, MovementComponent& MoveComp, VoodooEngine* Engine);
 
 // Add AI movement to game object,
 // If using AI then this will add movement to AI character using the assigned movement direction,
 // built in collision where AI will stop and only resume movement until collision is not detected.
 // Can assign what should be able to collide with AI and also connect an "OnCollided" event,
 // returns new movement location
-extern "C" VOODOOENGINE_API SVector AddMovementAI(AIComponent* AIComp);
+extern "C" VOODOOENGINE_API SVector AddMovementAI(AIComponent& AIComp);
 //---------------------

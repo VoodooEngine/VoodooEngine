@@ -682,11 +682,20 @@ void SetMouseState(bool Show, VoodooEngine* Engine)
 	{
 		Engine->Mouse.MouseCollider.NoCollision = false;
 		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame = false;
+
+		if (Engine->DebugMode ||
+			!Engine->Mouse.MouseBitmap.Bitmap)
+		{
+			Engine->Mouse.MouseCollider.RenderCollisionRect = true;
+		}
 	}
 	else
 	{
 		Engine->Mouse.MouseCollider.NoCollision = true;
 		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame = true;
+		Engine->Mouse.MouseCollider.RenderCollisionRect = false;
+
+		Engine->Mouse.MouseCollider.CollisionRectColor = { 0.2, 0.5, 0 };
 	}
 }
 
@@ -939,7 +948,7 @@ void UpdateAnimation(SAnimationParameters &AnimationParams,
 	}
 }
 
-void InitializeAnimationFirstFrame(SAnimationParameters &AnimationParams, 
+void InitAnimationFirstFrame(SAnimationParameters &AnimationParams, 
 	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight)
 {
 	UpdateAnimation(AnimationParams, BitmapSource, BitmapOffsetLeft, BitmapOffsetRight, 1);
@@ -1011,7 +1020,11 @@ void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engi
 	if (Engine->Mouse.MouseBitmap.Bitmap == nullptr || 
 		Engine->DebugMode)
 	{
-		const D2D1_COLOR_F Color = { 255, 255, 255, 255 };
+		// Skip rendereing altogether if set to not render
+		if (!Engine->Mouse.MouseCollider.RenderCollisionRect)
+		{
+			return;
+		}
 
 		D2D1_RECT_F Rect = D2D1::RectF(
 			Engine->Mouse.MouseCollider.ComponentLocation.X,
@@ -1336,7 +1349,7 @@ void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine)
 	File.close();
 }
 
-void InitializeWindow(
+void InitWindow(
 	VoodooEngine* Engine,
 	LPCWSTR WindowTitle, 
 	WNDPROC WindowProcedure,
@@ -1355,7 +1368,7 @@ void InitializeWindow(
 	Engine->Renderer = SetupRenderer(Engine->Renderer, Engine->Window.HWind);
 }
 
-void InitializeEngine(VoodooEngine* Engine)
+void InitEngine(VoodooEngine* Engine)
 {
 	// Assign based on configuration file if debug mode is true/false
 	Engine->DebugMode = SetDebugMode();
@@ -1454,96 +1467,132 @@ void RunEngine(VoodooEngine* Engine)
 
 float Interpolate(float Current, float Target, float DeltaTime, float Speed)
 {
-	return Current + DeltaTime * (Current - Target) * Speed;
+	return Current + Speed * (Target - Current) * DeltaTime;
 }
 
-SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent* MoveComp, VoodooEngine* Engine)
+float AddGravity(
+	GameObject* ComponentOwner, MovementComponent& MoveComp, float GravityScale, float DeltaTime)
+{
+	float NewLocationYAxis = 0;
+	if (!MoveComp.IsJumping)
+	{
+		if (!MoveComp.IsFalling)
+		{
+			return NewLocationYAxis;
+		}
+		float AddedGravity = GravityScale * 100;
+		ComponentOwner->Location.Y += AddedGravity * DeltaTime;
+		NewLocationYAxis = ComponentOwner->Location.Y;
+	}
+	return NewLocationYAxis;
+}
+
+SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent& MoveComp, VoodooEngine* Engine)
 {
 	float MovementMultiplierX = 
-		MoveComp->MovementDirection.X * MoveComp->MovementSpeed * Engine->DeltaTime;
+		MoveComp.MovementDirection.X * MoveComp.MovementSpeed * Engine->DeltaTime;
 	float MovementMultiplierY = 
-		MoveComp->MovementDirection.Y * MoveComp->MovementSpeed * Engine->DeltaTime;
+		MoveComp.MovementDirection.Y * MoveComp.MovementSpeed * Engine->DeltaTime;
 	SVector NewLocation = ComponentOwner->Location;
 
 	// X Axis
-	if (MoveComp->MovementDirection.X != 0)
+	if (MoveComp.MovementDirection.X != 0)
 	{
-		if (MoveComp->MovementDirection.X < 0 &&
-			!MoveComp->QuadCollisionParams.CollisionHitLeft)
+		if (MoveComp.MovementDirection.X < 0 &&
+			!MoveComp.QuadCollisionParams.CollisionHitLeft)
 		{
 			NewLocation.X += MovementMultiplierX;
 		}
-		if (MoveComp->MovementDirection.X > 0 &&
-			!MoveComp->QuadCollisionParams.CollisionHitRight)
+		if (MoveComp.MovementDirection.X > 0 &&
+			!MoveComp.QuadCollisionParams.CollisionHitRight)
 		{
 			NewLocation.X += MovementMultiplierX;
 		}
 	}
 	// Y Axis
-	if (MoveComp->MovementDirection.Y != 0)
+	if (MoveComp.MovementDirection.Y != 0)
 	{
-		if (MoveComp->MovementDirection.Y < 0 &&
-			!MoveComp->QuadCollisionParams.CollisionHitUp)
+		if (MoveComp.MovementDirection.Y < 0 &&
+			!MoveComp.QuadCollisionParams.CollisionHitUp)
 		{
 			NewLocation.Y += MovementMultiplierY;
 		}
-		if (MoveComp->MovementDirection.Y > 0 &&
-			!MoveComp->QuadCollisionParams.CollisionHitDown)
+		if (MoveComp.MovementDirection.Y > 0 &&
+			!MoveComp.QuadCollisionParams.CollisionHitDown)
 		{
 			NewLocation.Y += MovementMultiplierY;
 		}
 	}
 
 	// Set the default collision detected to false
-	MoveComp->QuadCollisionParams.CollisionHitLeft = false;
-	MoveComp->QuadCollisionParams.CollisionHitRight = false;
-	MoveComp->QuadCollisionParams.CollisionHitUp = false;
-	MoveComp->QuadCollisionParams.CollisionHitDown = false;
+	MoveComp.QuadCollisionParams.CollisionHitLeft = false;
+	MoveComp.QuadCollisionParams.CollisionHitRight = false;
+	MoveComp.QuadCollisionParams.CollisionHitUp = false;
+	MoveComp.QuadCollisionParams.CollisionHitDown = false;
+
+	float GroundCollisionLocationY = 0;
 
 	// Check for collision
 	for (int i = 0; i < Engine->StoredCollisionComponents.size(); i++)
 	{
 		// Collision detected left
 		if (IsCollisionDetected(
-			&MoveComp->QuadCollisionParams.CollisionLeft, Engine->StoredCollisionComponents[i]))
+			&MoveComp.QuadCollisionParams.CollisionLeft, Engine->StoredCollisionComponents[i]))
 		{
-			MoveComp->QuadCollisionParams.CollisionHitLeft = true;
+			MoveComp.QuadCollisionParams.CollisionHitLeft = true;
 		}
 		// Collision detected right
 		if (IsCollisionDetected(
-			&MoveComp->QuadCollisionParams.CollisionRight, Engine->StoredCollisionComponents[i]))
+			&MoveComp.QuadCollisionParams.CollisionRight, Engine->StoredCollisionComponents[i]))
 		{
-			MoveComp->QuadCollisionParams.CollisionHitRight = true;
+			MoveComp.QuadCollisionParams.CollisionHitRight = true;
 		}
 		// Collision detected up
 		if (IsCollisionDetected(
-			&MoveComp->QuadCollisionParams.CollisionUp, Engine->StoredCollisionComponents[i]))
+			&MoveComp.QuadCollisionParams.CollisionUp, Engine->StoredCollisionComponents[i]))
 		{
-			MoveComp->QuadCollisionParams.CollisionHitUp = true;
+			MoveComp.QuadCollisionParams.CollisionHitUp = true;
 		}
 		// Collision detected down
 		if (IsCollisionDetected(
-			&MoveComp->QuadCollisionParams.CollisionDown, Engine->StoredCollisionComponents[i]))
+			&MoveComp.QuadCollisionParams.CollisionDown, Engine->StoredCollisionComponents[i]))
 		{
-			MoveComp->QuadCollisionParams.CollisionHitDown = true;
+			MoveComp.QuadCollisionParams.CollisionHitDown = true;
+			GroundCollisionLocationY = Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
 		}
+	}
+	
+	// Snap character to ground if ground "down" collision detected
+	if (MoveComp.QuadCollisionParams.CollisionHitDown &&
+		!MoveComp.QuadCollisionParams.CollisionHitUp &&
+		!MoveComp.IsJumping)
+	{
+		NewLocation.Y = GroundCollisionLocationY - ComponentOwner->AssetCollision.CollisionRect.Y;
+	}
 
-		ComponentOwner->Location.X = NewLocation.X;
-		ComponentOwner->GameObjectBitmap.ComponentLocation.X = NewLocation.X;
+	// Set character bitmap and asset collision location the same as the new location
+	ComponentOwner->Location.X = NewLocation.X;
+	ComponentOwner->GameObjectBitmap.ComponentLocation.X = NewLocation.X;
+	ComponentOwner->Location.Y = NewLocation.Y;
+	ComponentOwner->GameObjectBitmap.ComponentLocation.Y = NewLocation.Y;
+	ComponentOwner->AssetCollision.ComponentLocation.X = NewLocation.X;
+	ComponentOwner->AssetCollision.ComponentLocation.Y = NewLocation.Y;
 
-		ComponentOwner->Location.Y = NewLocation.Y;
-		ComponentOwner->GameObjectBitmap.ComponentLocation.Y = NewLocation.Y;
-		
-		ComponentOwner->AssetCollision.ComponentLocation.X = NewLocation.X;
-		ComponentOwner->AssetCollision.ComponentLocation.Y = NewLocation.Y;
+	MoveComp.UpdateMovement(NewLocation);
 
-		MoveComp->UpdateMovement(NewLocation);
+	if (MoveComp.QuadCollisionParams.CollisionHitDown)
+	{
+		MoveComp.IsFalling = false;
+	}
+	else
+	{
+		MoveComp.IsFalling = true;
 	}
 
 	return NewLocation;
 }
 
-SVector AddMovementAI(AIComponent* AIComp)
+SVector AddMovementAI(AIComponent& AIComp)
 {
 	SVector NewLocation;
 
