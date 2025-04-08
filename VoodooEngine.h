@@ -292,7 +292,7 @@ public:
 	bool RenderCollisionRect = false;
 	bool DrawFilledRectangle = false;
 	float Opacity = 1;
-	int CollisionTag = 0;
+	int CollisionTag = -1;
 	std::vector<int> CollisionTagsToIgnore;
 	SColor CollisionRectColor;
 	SVector CollisionRect;
@@ -408,6 +408,7 @@ public:
 	virtual void OnGameObjectDeleted(){};
 
 	BitmapComponent GameObjectBitmap;
+	SVector GameObjectDimensions = { 0, 0 };
 
 	// Never account for negative value as game object ID as that is the default value
 	int GameObjectID = -1;
@@ -491,10 +492,11 @@ public:
 
 	// File I/O related
 	char FileName[100];
-	void(*AssetLoadFunctionPointer)(int, SVector);
+	void(*AssetLoadFunctionPointer)(int, SVector, std::vector<GameObject*>&);
 
 	std::vector<IRender*> InterfaceObjects_Render;
 	std::vector<IInput*> InterfaceObjects_InputCallback;
+	std::vector<GameStateCallback*> InterfaceObjects_GameStateCallback;
 
 	// Game background
 	BitmapComponent* CurrentGameBackground = nullptr;
@@ -677,10 +679,16 @@ public:
 		for (int i = 0; i < StoredGameObjects.size(); i++)
 		{
 			StoredGameObjects[i]->OnGameStart();
+			// If no default asset collision is assigned, 
+			// then disable collision when game starts
 			if (!StoredGameObjects[i]->CreateDefaultAssetCollisionInGame)
 			{
 				StoredGameObjects[i]->AssetCollision.NoCollision = true;
 			}
+		}
+		for (int i = 0; i < InterfaceObjects_GameStateCallback.size(); i++)
+		{
+			InterfaceObjects_GameStateCallback[i]->OnGameStart();
 		}
 	}
 	void EndGame()
@@ -689,10 +697,17 @@ public:
 		for (int i = 0; i < StoredGameObjects.size(); i++)
 		{
 			StoredGameObjects[i]->OnGameEnd();
+			// If no default asset collision is assigned, 
+			// then enable collision when game ends 
+			// (so the asset is clickable in the editor during level edit)
 			if (!StoredGameObjects[i]->CreateDefaultAssetCollisionInGame)
 			{
 				StoredGameObjects[i]->AssetCollision.NoCollision = false;
 			}
+		}
+		for (int i = 0; i < InterfaceObjects_GameStateCallback.size(); i++)
+		{
+			InterfaceObjects_GameStateCallback[i]->OnGameEnd();
 		}
 	}
 
@@ -728,6 +743,8 @@ public:
 			Iterator->second.TextureAtlas, 
 			Iterator->second.TextureAtlasWidthHeight, 
 			Iterator->second.TextureAtlasOffsetMultiplierWidthHeight, false);
+		StoredGameObjects.back()->GameObjectDimensions.X = Iterator->second.TextureAtlasWidthHeight.X;
+		StoredGameObjects.back()->GameObjectDimensions.Y = Iterator->second.TextureAtlasWidthHeight.Y;
 		StoredGameObjects.back()->GameObjectBitmap.BitmapParams.RenderLayer = Iterator->second.RenderLayer;
 		StoredGameObjects.back()->GameObjectBitmap.ComponentLocation = SpawnLocation;
 		StoredBitmapComponents.push_back(&StoredGameObjects.back()->GameObjectBitmap);
@@ -737,7 +754,7 @@ public:
 		if (EditorMode || 
 			Iterator->second.CreateDefaultAssetCollision)
 		{
-			StoredGameObjects.back()->AssetCollision.CollisionRect = 
+			StoredGameObjects.back()->AssetCollision.CollisionRect =
 				{ Iterator->second.TextureAtlasWidthHeight.X, Iterator->second.TextureAtlasWidthHeight.Y };
 			StoredGameObjects.back()->AssetCollision.ComponentLocation = SpawnLocation;
 			StoredGameObjects.back()->AssetCollision.CollisionTag = GameObjectID;
@@ -798,9 +815,6 @@ public:
 		std::vector<CollisionComponent*>().swap(StoredCollisionComponents);
 		std::vector<GameObject*>().swap(StoredGameObjects);
 	};
-
-private:
-	std::map<int, bool> StoredInputs;
 };
 
 // Used to setup check for collision detection on left, right, up and down sides of a game object 
@@ -833,23 +847,23 @@ public:
 	SVector MovementDirection;
 	float MovementSpeed = 0;
 	SQuadCollisionParameters QuadCollisionParams;
-	bool IsJumping = false;
-	bool IsFalling = false;
+	
+	// Velocity makes gravity smooth when character is jumping/falling
+	float Velocity = 0;
+	float JumpHeight = 20; 
+	bool GravityEnabled = false;
 
-	void InitMovementComponent(
+	float GroundHitCollisionLocation = 0;
+	float RoofHitCollisionLocation = 0;
+
+	void InitMovementComponent(GameObject* ComponentOwner,
 		SQuadCollisionParameters DesiredQuadCollisionParams, 
-		float DesiredMovementSpeed, VoodooEngine* Engine)
+		float DesiredMovementSpeed, bool EnableGravity, VoodooEngine* Engine)
 	{
-		InitCollisionRectangles(DesiredQuadCollisionParams, Engine);
-
+		InitCollisionRectangles(ComponentOwner, DesiredQuadCollisionParams, Engine);
 		MovementSpeed = DesiredMovementSpeed;
+		GravityEnabled = EnableGravity;
 	}
-
-	void UpdateMovement(SVector NewLocation)
-	{
-		UpdateCollisionRectsLocation(NewLocation);
-	}
-
 	void RemoveMovementComponent(VoodooEngine* Engine)
 	{
 		Engine->RemoveComponent(
@@ -861,9 +875,103 @@ public:
 		Engine->RemoveComponent(
 			&QuadCollisionParams.CollisionDown, &Engine->StoredCollisionComponents);
 	}
+	void UpdateQuadCollisionLocation(SVector NewLocation)
+	{
+		UpdateCollisionRectsLocation(NewLocation);
+	}
+	void UpdateGravity()
+	{
+		// Disable velocity/falling if gravity is not enabled 
+		// (e.g. the character movement is top down 4 directional)
+		if (!GravityEnabled)
+		{
+			Velocity = 0;
+			Falling = false;
+			return;
+		}
+
+		if (QuadCollisionParams.CollisionHitDown)
+		{
+			Falling = false;
+			Jumping = false;
+			
+			// Reset velocity when ground is detected and jumping is not requested
+			if (!IsRequestingJump())
+			{
+				Velocity = 0;
+			}
+		}
+		else
+		{
+			// Continously push velocity (gravity) down
+			Velocity += 1;
+
+			Falling = true;
+			
+			// As soon as character is in the air, reset jump request
+			JumpRequested = false;
+		}
+	}
+	bool IsRequestingJump()
+	{
+		return JumpRequested;
+	}
+	// Will only allow jump if gravity is enabled, 
+	// and if character is not already jumping/falling
+	void Jump()
+	{
+		if (GravityEnabled &&
+			!Jumping &&
+			!Falling)
+		{
+			Jumping = true;
+			JumpRequested = true;
+			Velocity = -JumpHeight;
+		}
+	}
+	bool IsJumping()
+	{
+		return Jumping;
+	}
+	// Will only allow climb if not falling or jumping
+	void Climb()
+	{
+		if (ClimbAllowed())
+		{
+			Climbing = true;
+		}
+	}
+	void StopClimb()
+	{
+		Climbing = false;
+	}
+	bool IsClimbing()
+	{
+		return Climbing;
+	}
+	bool IsFalling()
+	{
+		return Falling;
+	}
 
 private:
-	void InitCollisionRectangles(
+	bool Climbing = false;
+	bool Falling = false;
+	bool Jumping = false;
+	bool JumpRequested = false;
+
+	bool ClimbAllowed()
+	{
+		bool CanClimb = false;
+		if (!Falling &&
+			!Jumping)
+		{
+			CanClimb = true;
+		}
+		return CanClimb;
+	}
+
+	void InitCollisionRectangles(GameObject* ComponentOwner,
 		SQuadCollisionParameters DesiredQuadCollisionParams, VoodooEngine* Engine)
 	{
 		if (Engine->DebugMode)
@@ -878,6 +986,11 @@ private:
 			QuadCollisionParams.CollisionUp.CollisionRectColor = Engine->ColorYellow;
 			QuadCollisionParams.CollisionDown.CollisionRectColor = Engine->ColorYellow;
 		}
+
+		QuadCollisionParams.CollisionLeft.CollisionTag = ComponentOwner->GameObjectID;
+		QuadCollisionParams.CollisionRight.CollisionTag = ComponentOwner->GameObjectID;
+		QuadCollisionParams.CollisionUp.CollisionTag = ComponentOwner->GameObjectID;
+		QuadCollisionParams.CollisionDown.CollisionTag = ComponentOwner->GameObjectID;
 
 		QuadCollisionParams.CollisionLeft.CollisionRect = 
 			DesiredQuadCollisionParams.RectSizeCollisionLeft;
@@ -902,7 +1015,6 @@ private:
 		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionUp);
 		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionDown);
 	}
-
 	void UpdateCollisionRectsLocation(SVector NewLocation)
 	{
 		QuadCollisionParams.CollisionLeft.ComponentLocation.X =
@@ -1398,7 +1510,9 @@ extern "C" VOODOOENGINE_API void SaveLevelFile(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void OpenLevelFile(VoodooEngine* Engine);
 // Read/Write (saving/loading)
 extern "C" VOODOOENGINE_API void SaveGameObjectsToFile(char* FileName, VoodooEngine* Engine);
-extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(
+	char* FileName, VoodooEngine* Engine, std::vector<GameObject*>& LevelToAddGameObjects,
+	bool DeleteExistingObjectsOnLoad = true);
 //-------------------------------------------
 
 // Level Editor
@@ -1471,6 +1585,7 @@ public:
 		Engine->StoredEditorBitmapComponents.push_back(&LevelEditorUITop);
 
 		// Create all the clickable level editor buttons
+		CreatePlayLevelButton();
 		OpenLevelButton = CreateButton(
 			Engine, OpenLevelButton, TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL,
 			TwoSided, "open_level", { BUTTON_LOC_X_OPENLEVEL, BUTTON_LOC_Y_OPENLEVEL },
@@ -1479,7 +1594,6 @@ public:
 			Engine, SaveLevelButton, TAG_LEVEL_EDITOR_BUTTON_SAVELEVEL,
 			TwoSided, "save_level", { BUTTON_LOC_X_SAVELEVEL, BUTTON_LOC_Y_SAVELEVEL },
 			Asset.LevelEditorButtonW140);
-		CreatePlayLevelButton();
 		PreviousButton = CreateButton(
 			Engine, PreviousButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_PREVIOUS, 
 			TwoSided, "previous", { BUTTON_LOC_X_PREVIOUS, BUTTON_LOC_Y_NEXT_PREVIOUS },
@@ -1967,12 +2081,14 @@ public:
 			case LevelEditor::None:
 				break;
 			// In asset menu mode, 
-			// when asset button is clicked a game obejct based on ID is spawned
+			// when asset button is clicked a game object based on ID is spawned
 			case LevelEditor::AssetSelection: 
 				if (Engine->AssetLoadFunctionPointer)
 				{
+					// Pass empty vector since it is only used for storing gameobjects to levels
+					std::vector<GameObject*> EmptyVector;
 					Engine->AssetLoadFunctionPointer(HoveredButtonID,
-						{ ASSET_SELECTION_SPAWN_LOCATION_X, ASSET_SELECTION_SPAWN_LOCATION_Y });
+						{ ASSET_SELECTION_SPAWN_LOCATION_X, ASSET_SELECTION_SPAWN_LOCATION_Y }, EmptyVector);
 					UpdateSaveState(false);
 				}
 				break;
@@ -2278,10 +2394,6 @@ public:
 
 };
 
-// Add gravity to movement (only on Y axis)
-extern "C" VOODOOENGINE_API float AddGravity(
-	GameObject* ComponentOwner, MovementComponent& MoveComp, float GravityScale, float DeltaTime);
-
 // Add movement input to game object. 
 // Built in collision detection is provided,
 // if you set up the "QuadCollisionParameters" struct within "MovementComponent".
@@ -2289,7 +2401,8 @@ extern "C" VOODOOENGINE_API float AddGravity(
 extern "C" VOODOOENGINE_API SVector AddMovementInput(
 	GameObject* ComponentOwner, MovementComponent& MoveComp, VoodooEngine* Engine);
 
-// Add AI movement to game object,
+// Add AI movement to game object 
+// (will inherit from "MovementComponent" and make use of "AddMovementInput" function)
 // If using AI then this will add movement to AI character using the assigned movement direction,
 // built in collision where AI will stop and only resume movement until collision is not detected.
 // Can assign what should be able to collide with AI and also connect an "OnCollided" event,

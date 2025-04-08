@@ -691,6 +691,12 @@ void SetMouseState(bool Show, VoodooEngine* Engine)
 	}
 	else
 	{
+		// Only allow mouse to be hidden if game is running
+		if (!Engine->GameRunning)
+		{
+			return;
+		}
+
 		Engine->Mouse.MouseCollider.NoCollision = true;
 		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame = true;
 		Engine->Mouse.MouseCollider.RenderCollisionRect = false;
@@ -1099,17 +1105,21 @@ bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
 void BroadcastCollision(Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target)
 {
 	if (!Sender)
+	{ 
 		return;
-
+	}
 	if (!Target)
+	{ 
 		return;
-
+	}
 	if (Sender->NoCollision)
+	{ 
 		return;
-
+	}
 	if (Target->NoCollision)
+	{
 		return;
-
+	}
 	bool Ignore = false;
 	if (IsCollisionDetected(Sender, Target))
 	{
@@ -1289,8 +1299,10 @@ void OpenLevelFile(VoodooEngine* Engine)
 	}
 	else
 	{
+		// Pass empty vector since it is only used for storing gameobjects to levels
+		std::vector<GameObject*> EmptyVector;
 		// Called once "open" button has been clicked
-		LoadGameObjectsFromFile(Engine->FileName, Engine);
+		LoadGameObjectsFromFile(Engine->FileName, Engine, EmptyVector);
 	}
 }
 
@@ -1310,10 +1322,15 @@ void SaveGameObjectsToFile(char* FileName, VoodooEngine* Engine)
 	File.close();
 }
 
-void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine)
+void LoadGameObjectsFromFile(
+	char* FileName, VoodooEngine* Engine, 
+	std::vector<GameObject*>& LevelToAddGameObjects, bool DeleteExistingObjectsOnLoad)
 {
-	// Delete all current game objects
-	Engine->DeleteAllGameObjects();
+	if (DeleteExistingObjectsOnLoad)
+	{
+		// Delete all current game objects
+		Engine->DeleteAllGameObjects();
+	}
 
 	std::fstream File(FileName);
 	if (File.is_open())
@@ -1342,7 +1359,7 @@ void LoadGameObjectsFromFile(char* FileName, VoodooEngine* Engine)
 			SpawnLocation.X = (std::stof(HorizontalLineNum[1]));
 			SpawnLocation.Y = (std::stof(HorizontalLineNum[2]));
 			
-			Engine->AssetLoadFunctionPointer(GameObjectID, SpawnLocation);
+			Engine->AssetLoadFunctionPointer(GameObjectID, SpawnLocation, LevelToAddGameObjects);
 		}
 	}
 
@@ -1470,32 +1487,17 @@ float Interpolate(float Current, float Target, float DeltaTime, float Speed)
 	return Current + Speed * (Target - Current) * DeltaTime;
 }
 
-float AddGravity(
-	GameObject* ComponentOwner, MovementComponent& MoveComp, float GravityScale, float DeltaTime)
-{
-	float NewLocationYAxis = 0;
-	if (!MoveComp.IsJumping)
-	{
-		if (!MoveComp.IsFalling)
-		{
-			return NewLocationYAxis;
-		}
-		float AddedGravity = GravityScale * 100;
-		ComponentOwner->Location.Y += AddedGravity * DeltaTime;
-		NewLocationYAxis = ComponentOwner->Location.Y;
-	}
-	return NewLocationYAxis;
-}
-
 SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent& MoveComp, VoodooEngine* Engine)
 {
 	float MovementMultiplierX = 
 		MoveComp.MovementDirection.X * MoveComp.MovementSpeed * Engine->DeltaTime;
 	float MovementMultiplierY = 
 		MoveComp.MovementDirection.Y * MoveComp.MovementSpeed * Engine->DeltaTime;
+	
+	// Default new location as the location of the component owner
 	SVector NewLocation = ComponentOwner->Location;
 
-	// X Axis
+	// Add new location on X Axis (left/right)
 	if (MoveComp.MovementDirection.X != 0)
 	{
 		if (MoveComp.MovementDirection.X < 0 &&
@@ -1509,8 +1511,10 @@ SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent& MoveComp
 			NewLocation.X += MovementMultiplierX;
 		}
 	}
-	// Y Axis
-	if (MoveComp.MovementDirection.Y != 0)
+	// Add new location on Y Axis (up/down) if allowed
+	if (MoveComp.MovementDirection.Y != 0 &&
+		!MoveComp.IsFalling() &&
+		!MoveComp.IsJumping())
 	{
 		if (MoveComp.MovementDirection.Y < 0 &&
 			!MoveComp.QuadCollisionParams.CollisionHitUp)
@@ -1529,8 +1533,6 @@ SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent& MoveComp
 	MoveComp.QuadCollisionParams.CollisionHitRight = false;
 	MoveComp.QuadCollisionParams.CollisionHitUp = false;
 	MoveComp.QuadCollisionParams.CollisionHitDown = false;
-
-	float GroundCollisionLocationY = 0;
 
 	// Check for collision
 	for (int i = 0; i < Engine->StoredCollisionComponents.size(); i++)
@@ -1552,22 +1554,49 @@ SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent& MoveComp
 			&MoveComp.QuadCollisionParams.CollisionUp, Engine->StoredCollisionComponents[i]))
 		{
 			MoveComp.QuadCollisionParams.CollisionHitUp = true;
+			MoveComp.RoofHitCollisionLocation = 
+				Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
 		}
 		// Collision detected down
 		if (IsCollisionDetected(
 			&MoveComp.QuadCollisionParams.CollisionDown, Engine->StoredCollisionComponents[i]))
 		{
 			MoveComp.QuadCollisionParams.CollisionHitDown = true;
-			GroundCollisionLocationY = Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
+			MoveComp.GroundHitCollisionLocation = 
+				Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
 		}
 	}
 	
-	// Snap character to ground if ground "down" collision detected
-	if (MoveComp.QuadCollisionParams.CollisionHitDown &&
-		!MoveComp.QuadCollisionParams.CollisionHitUp &&
-		!MoveComp.IsJumping)
+	// Update the new location of the quad collision rects 
+	// that check for character collision with the environment
+	MoveComp.UpdateQuadCollisionLocation(NewLocation);
+
+	// Update gravity if enabled, used for e.g. sidescroller platformer, 
+	// and not used for e.g. top down 4 directional movement
+	if (MoveComp.GravityEnabled &&
+		!MoveComp.IsClimbing())
 	{
-		NewLocation.Y = GroundCollisionLocationY - ComponentOwner->AssetCollision.CollisionRect.Y;
+		MoveComp.UpdateGravity();
+		NewLocation.Y += MoveComp.Velocity;
+
+		// Snap character to ground if ground "down" collision detected
+		if (MoveComp.QuadCollisionParams.CollisionHitDown &&
+			!MoveComp.QuadCollisionParams.CollisionHitUp &&
+			!MoveComp.IsRequestingJump())
+		{
+			MoveComp.Velocity = 0;
+			NewLocation.Y = 
+				MoveComp.GroundHitCollisionLocation - ComponentOwner->GameObjectDimensions.Y;
+		}
+		// Prevent character from clipping into roof if "up" collision is detected
+		// (MoveComp.GravityEnabled &&
+		else if (MoveComp.QuadCollisionParams.CollisionHitUp &&
+			!MoveComp.QuadCollisionParams.CollisionHitDown)
+		{
+			MoveComp.Velocity = 0;
+			NewLocation.Y = 
+				MoveComp.RoofHitCollisionLocation + ComponentOwner->GameObjectDimensions.Y;
+		}	
 	}
 
 	// Set character bitmap and asset collision location the same as the new location
@@ -1577,17 +1606,6 @@ SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent& MoveComp
 	ComponentOwner->GameObjectBitmap.ComponentLocation.Y = NewLocation.Y;
 	ComponentOwner->AssetCollision.ComponentLocation.X = NewLocation.X;
 	ComponentOwner->AssetCollision.ComponentLocation.Y = NewLocation.Y;
-
-	MoveComp.UpdateMovement(NewLocation);
-
-	if (MoveComp.QuadCollisionParams.CollisionHitDown)
-	{
-		MoveComp.IsFalling = false;
-	}
-	else
-	{
-		MoveComp.IsFalling = true;
-	}
 
 	return NewLocation;
 }
