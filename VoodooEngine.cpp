@@ -1487,125 +1487,171 @@ float Interpolate(float Current, float Target, float DeltaTime, float Speed)
 	return Current + Speed * (Target - Current) * DeltaTime;
 }
 
-SVector AddMovementInput(GameObject* ComponentOwner, MovementComponent& MoveComp, VoodooEngine* Engine)
+void SetGameObjectLocation(GameObject* GameObjectToSet, SVector NewLocation)
 {
-	float MovementMultiplierX = 
-		MoveComp.MovementDirection.X * MoveComp.MovementSpeed * Engine->DeltaTime;
-	float MovementMultiplierY = 
-		MoveComp.MovementDirection.Y * MoveComp.MovementSpeed * Engine->DeltaTime;
-	
+	if (!GameObjectToSet)
+	{
+		return;
+	}
+
+	GameObjectToSet->Location = NewLocation;
+	GameObjectToSet->GameObjectBitmap.ComponentLocation = NewLocation;
+	GameObjectToSet->AssetCollision.ComponentLocation = NewLocation;
+}
+
+void SetCharacterLocation(Character* CharacterToSet, SVector NewLocation)
+{
+	if (!CharacterToSet)
+	{
+		return;
+	}
+
+	// Check to see if gravity was set to be activated for this character
+	bool WasGravityEnabled = CharacterToSet->MoveComp.GravityEnabled;
+
+	// Temp disable gravity to ensure player gets teleported to new location
+	CharacterToSet->MoveComp.GravityEnabled = false;
+	CharacterToSet->MoveComp.Velocity = 0;
+
+	// Teleport player to new location
+	CharacterToSet->Location = NewLocation;
+	CharacterToSet->GameObjectBitmap.ComponentLocation = NewLocation;
+	CharacterToSet->AssetCollision.ComponentLocation = NewLocation;
+	CharacterToSet->MoveComp.QuadCollisionParams.CollisionLeft.ComponentLocation = NewLocation;
+	CharacterToSet->MoveComp.QuadCollisionParams.CollisionRight.ComponentLocation = NewLocation;
+	CharacterToSet->MoveComp.QuadCollisionParams.CollisionUp.ComponentLocation = NewLocation;
+	CharacterToSet->MoveComp.QuadCollisionParams.CollisionDown.ComponentLocation = NewLocation;
+
+	// Only set gravity back if it was set to be activated for this character
+	if (WasGravityEnabled)
+	{
+		CharacterToSet->MoveComp.GravityEnabled = true;
+	}
+}
+
+SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine)
+{	
 	// Default new location as the location of the component owner
-	SVector NewLocation = ComponentOwner->Location;
+	SVector NewLocation = CharacterToAddMovement->Location;
 
 	// Add new location on X Axis (left/right)
-	if (MoveComp.MovementDirection.X != 0)
+	if (CharacterToAddMovement->MoveComp.MovementDirection.X != 0)
 	{
-		if (MoveComp.MovementDirection.X < 0 &&
-			!MoveComp.QuadCollisionParams.CollisionHitLeft)
+		if (CharacterToAddMovement->MoveComp.MovementDirection.X < 0 &&
+			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft)
 		{
-			NewLocation.X += MovementMultiplierX;
+			NewLocation.X -= CharacterToAddMovement->MoveComp.MovementSpeed * Engine->DeltaTime;
 		}
-		if (MoveComp.MovementDirection.X > 0 &&
-			!MoveComp.QuadCollisionParams.CollisionHitRight)
+		if (CharacterToAddMovement->MoveComp.MovementDirection.X > 0 &&
+			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight)
 		{
-			NewLocation.X += MovementMultiplierX;
+			NewLocation.X += CharacterToAddMovement->MoveComp.MovementSpeed * Engine->DeltaTime;
 		}
 	}
 	// Add new location on Y Axis (up/down) if allowed
-	if (MoveComp.MovementDirection.Y != 0 &&
-		!MoveComp.IsFalling() &&
-		!MoveComp.IsJumping())
+	if (CharacterToAddMovement->MoveComp.MovementDirection.Y != 0 &&
+		!CharacterToAddMovement->MoveComp.IsFalling() &&
+		!CharacterToAddMovement->MoveComp.IsJumping())
 	{
-		if (MoveComp.MovementDirection.Y < 0 &&
-			!MoveComp.QuadCollisionParams.CollisionHitUp)
+		if (CharacterToAddMovement->MoveComp.MovementDirection.Y < 0 &&
+			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp)
 		{
-			NewLocation.Y += MovementMultiplierY;
+			NewLocation.Y -= CharacterToAddMovement->MoveComp.MovementSpeed * Engine->DeltaTime;
 		}
-		if (MoveComp.MovementDirection.Y > 0 &&
-			!MoveComp.QuadCollisionParams.CollisionHitDown)
+		if (CharacterToAddMovement->MoveComp.MovementDirection.Y > 0 &&
+			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown)
 		{
-			NewLocation.Y += MovementMultiplierY;
+			NewLocation.Y += CharacterToAddMovement->MoveComp.MovementSpeed * Engine->DeltaTime;
 		}
 	}
 
 	// Set the default collision detected to false
-	MoveComp.QuadCollisionParams.CollisionHitLeft = false;
-	MoveComp.QuadCollisionParams.CollisionHitRight = false;
-	MoveComp.QuadCollisionParams.CollisionHitUp = false;
-	MoveComp.QuadCollisionParams.CollisionHitDown = false;
+	CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft = false;
+	CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight = false;
+	CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp = false;
+	CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown = false;
 
 	// Check for collision
 	for (int i = 0; i < Engine->StoredCollisionComponents.size(); i++)
 	{
 		// Collision detected left
 		if (IsCollisionDetected(
-			&MoveComp.QuadCollisionParams.CollisionLeft, Engine->StoredCollisionComponents[i]))
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionLeft, 
+			Engine->StoredCollisionComponents[i]))
 		{
-			MoveComp.QuadCollisionParams.CollisionHitLeft = true;
+			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft = true;
 		}
 		// Collision detected right
 		if (IsCollisionDetected(
-			&MoveComp.QuadCollisionParams.CollisionRight, Engine->StoredCollisionComponents[i]))
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionRight,
+			Engine->StoredCollisionComponents[i]))
 		{
-			MoveComp.QuadCollisionParams.CollisionHitRight = true;
+			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight = true;
 		}
 		// Collision detected up
 		if (IsCollisionDetected(
-			&MoveComp.QuadCollisionParams.CollisionUp, Engine->StoredCollisionComponents[i]))
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionUp, 
+			Engine->StoredCollisionComponents[i]))
 		{
-			MoveComp.QuadCollisionParams.CollisionHitUp = true;
-			MoveComp.RoofHitCollisionLocation = 
+			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp = true;
+			CharacterToAddMovement->MoveComp.RoofHitCollisionLocation =
 				Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
 		}
 		// Collision detected down
 		if (IsCollisionDetected(
-			&MoveComp.QuadCollisionParams.CollisionDown, Engine->StoredCollisionComponents[i]))
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionDown, 
+			Engine->StoredCollisionComponents[i]))
 		{
-			MoveComp.QuadCollisionParams.CollisionHitDown = true;
-			MoveComp.GroundHitCollisionLocation = 
-				Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
+			if (!CharacterToAddMovement->MoveComp.IsRequestingJump())
+			{
+				CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown = true;
+				CharacterToAddMovement->MoveComp.GroundHitCollisionLocation =
+					Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
+			}
 		}
 	}
 	
-	// Update the new location of the quad collision rects 
-	// that check for character collision with the environment
-	MoveComp.UpdateQuadCollisionLocation(NewLocation);
-
 	// Update gravity if enabled, used for e.g. sidescroller platformer, 
 	// and not used for e.g. top down 4 directional movement
-	if (MoveComp.GravityEnabled &&
-		!MoveComp.IsClimbing())
+	if (CharacterToAddMovement->MoveComp.GravityEnabled &&
+		!CharacterToAddMovement->MoveComp.IsClimbing())
 	{
-		MoveComp.UpdateGravity();
-		NewLocation.Y += MoveComp.Velocity;
+		CharacterToAddMovement->MoveComp.UpdateGravity();
+		if (!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown)
+		{
+			NewLocation.Y += CharacterToAddMovement->MoveComp.Velocity;
+		}
 
 		// Snap character to ground if ground "down" collision detected
-		if (MoveComp.QuadCollisionParams.CollisionHitDown &&
-			!MoveComp.QuadCollisionParams.CollisionHitUp &&
-			!MoveComp.IsRequestingJump())
+		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown &&
+			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp &&
+			!CharacterToAddMovement->MoveComp.IsRequestingJump())
 		{
-			MoveComp.Velocity = 0;
 			NewLocation.Y = 
-				MoveComp.GroundHitCollisionLocation - ComponentOwner->GameObjectDimensions.Y;
+				CharacterToAddMovement->MoveComp.GroundHitCollisionLocation - 
+				CharacterToAddMovement->GameObjectDimensions.Y;
 		}
 		// Prevent character from clipping into roof if "up" collision is detected
-		// (MoveComp.GravityEnabled &&
-		else if (MoveComp.QuadCollisionParams.CollisionHitUp &&
-			!MoveComp.QuadCollisionParams.CollisionHitDown)
+		else if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp &&
+			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown)
 		{
-			MoveComp.Velocity = 0;
 			NewLocation.Y = 
-				MoveComp.RoofHitCollisionLocation + ComponentOwner->GameObjectDimensions.Y;
+				CharacterToAddMovement->MoveComp.RoofHitCollisionLocation + 
+				CharacterToAddMovement->GameObjectDimensions.Y;
 		}	
 	}
 
+	// Update the new location of the quad collision rects 
+	// that check for character collision with the environment
+	CharacterToAddMovement->MoveComp.UpdateQuadCollisionLocation(NewLocation);
+
 	// Set character bitmap and asset collision location the same as the new location
-	ComponentOwner->Location.X = NewLocation.X;
-	ComponentOwner->GameObjectBitmap.ComponentLocation.X = NewLocation.X;
-	ComponentOwner->Location.Y = NewLocation.Y;
-	ComponentOwner->GameObjectBitmap.ComponentLocation.Y = NewLocation.Y;
-	ComponentOwner->AssetCollision.ComponentLocation.X = NewLocation.X;
-	ComponentOwner->AssetCollision.ComponentLocation.Y = NewLocation.Y;
+	CharacterToAddMovement->Location.X = NewLocation.X;
+	CharacterToAddMovement->GameObjectBitmap.ComponentLocation.X = NewLocation.X;
+	CharacterToAddMovement->Location.Y = NewLocation.Y;
+	CharacterToAddMovement->GameObjectBitmap.ComponentLocation.Y = NewLocation.Y;
+	CharacterToAddMovement->AssetCollision.ComponentLocation.X = NewLocation.X;
+	CharacterToAddMovement->AssetCollision.ComponentLocation.Y = NewLocation.Y;
 
 	return NewLocation;
 }

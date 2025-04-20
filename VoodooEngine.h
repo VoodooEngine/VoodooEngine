@@ -498,6 +498,11 @@ public:
 	std::vector<IInput*> InterfaceObjects_InputCallback;
 	std::vector<GameStateCallback*> InterfaceObjects_GameStateCallback;
 
+	// The path to the png file of player start bitmap
+	// (used by level editor to determine the player position on game start/level load)
+	const wchar_t* AssetPathPlayerStartBitmap = 
+		L"EngineContent/LevelEditor/AssetThumbnails/PlayerStart.png";
+
 	// Game background
 	BitmapComponent* CurrentGameBackground = nullptr;
 
@@ -851,6 +856,7 @@ public:
 	// Velocity makes gravity smooth when character is jumping/falling
 	float Velocity = 0;
 	float JumpHeight = 20; 
+	float GravityScale = 20;
 	bool GravityEnabled = false;
 
 	float GroundHitCollisionLocation = 0;
@@ -2366,11 +2372,13 @@ extern "C" VOODOOENGINE_API void RunEngine(VoodooEngine* Engine);
 // Smooth interpolation from point A to B
 extern "C" VOODOOENGINE_API float Interpolate(float Current, float Target, float DeltaTime, float Speed);
 
-// Character stuff
+// Character class, can be used as a base for a player or NPC ect.
 //---------------------
 class Character : public GameObject, public UpdateComponent
 {
 public:
+	MovementComponent MoveComp;
+	
 	void OnGameObjectCreated(SVector SpawnLocation)
 	{
 		VoodooEngine::Engine->StoredUpdateComponents.push_back(this);
@@ -2394,12 +2402,35 @@ public:
 
 };
 
+// Set the location of gameobjects
+extern "C" VOODOOENGINE_API void SetGameObjectLocation(GameObject* GameObjectToSet, SVector NewLocation);
+
+// Set the location of gameobjects that inherit from character class
+extern "C" VOODOOENGINE_API void SetCharacterLocation(Character* CharacterToSet, SVector NewLocation);
+
+class PlayerStart : public GameObject
+{
+public:
+	void SetVisibility(bool Show)
+	{
+		if (Show)
+		{
+			GameObjectBitmap.BitmapParams.HiddenInGame = false;
+			AssetCollision.RenderCollisionRect = true;
+		}
+		else
+		{
+			GameObjectBitmap.BitmapParams.HiddenInGame = true;
+			AssetCollision.RenderCollisionRect = false;
+		}
+	}
+};
+
 // Add movement input to game object. 
 // Built in collision detection is provided,
 // if you set up the "QuadCollisionParameters" struct within "MovementComponent".
 // Returns new movement location
-extern "C" VOODOOENGINE_API SVector AddMovementInput(
-	GameObject* ComponentOwner, MovementComponent& MoveComp, VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine);
 
 // Add AI movement to game object 
 // (will inherit from "MovementComponent" and make use of "AddMovementInput" function)
