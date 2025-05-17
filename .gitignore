@@ -361,9 +361,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+<<<<<<< HEAD
 /VoodooEngine.vcxproj
 /VoodooEngine.vcxproj.filters
 /pch.cpp
 /dllmain.cpp
 /pch.h
 /framework.h
+=======
+>>>>>>> 390629c83d8aabe7b20e5f913a197f77a691471f
