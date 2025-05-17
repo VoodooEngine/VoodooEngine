@@ -151,7 +151,7 @@ void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
 
 void BroadcastInput(std::vector<IInput*> StoredCallbacks, int Input, bool Pressed)
 {
-	for (int i = 0; i < StoredCallbacks.size(); i++)
+	for (int i = 0; i < StoredCallbacks.size(); ++i)
 	{
 		StoredCallbacks[i]->OnInputBroadcast(Input, Pressed);
 	}
@@ -311,12 +311,12 @@ void CreateUITextFormat(VoodooEngine* Engine)
 
 void CreateText(VoodooEngine* Engine, Button* ButtonReference, SButtonParameters ButtonParams)
 {
-	SEditorAssetList FontAssetPath;
+	SEditorAssetPathList FontAssetPath;
 
 	SVector LetterLocation = ButtonParams.ButtonLocation;
 	LetterLocation.Y = ButtonParams.ButtonLocation.Y + ButtonParams.ButtonTextOffset.Y;
 	float LetterOffsetX = LetterLocation.X + ButtonParams.ButtonTextOffset.X;
-	for (int i = 0; i < ButtonParams.ButtonTextString.length(); i++)
+	for (int i = 0; i < ButtonParams.ButtonTextString.length(); ++i)
 	{
 		// Makes room for the next letter in the text
 		LetterOffsetX += Engine->LetterSpace;
@@ -341,9 +341,9 @@ void RenderUITextsRenderLayer(VoodooEngine* Engine)
 {
 	D2D1_RECT_F OriginTextLocation = D2D1::RectF(1680.f, 110.f, 2000.f, 110.f);
 	float OffsetLocationY = 50;
-	for (int i = 0; i < Engine->StoredRenderLayerUITexts.size(); i++)
+	for (int i = 0; i < Engine->StoredLevelEditorRenderLayers.size(); ++i)
 	{
-		auto Iterator = Engine->StoredRenderLayerUITexts.find(i);
+		auto Iterator = Engine->StoredLevelEditorRenderLayers.find(i);
 		if (Iterator->second.HideText)
 		{
 			return;
@@ -380,7 +380,7 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 		return;
 	}
 
-	SEditorAssetList FontAssetPath;
+	SEditorAssetPathList FontAssetPath;
 
 	float OriginPositionY = 100;
 	SVector LetterLocation = { 0, OriginPositionY };
@@ -388,7 +388,7 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 	Engine->ScreenPrintTextColumnsPrinted += 1;
 	float OffsetAmount = 30;
 	float LetterOffsetY = LetterLocation.Y += (OffsetAmount * Engine->ScreenPrintTextColumnsPrinted);
-	for (int i = 0; i < DebugText.length(); i++)
+	for (int i = 0; i < DebugText.length(); ++i)
 	{
 		// Makes room for the next letter in the text
 		LetterOffsetX += Engine->LetterSpace;
@@ -406,14 +406,17 @@ void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
 		}
 	}
 }
-
+ 
 Button* CreateButton(
 	VoodooEngine* Engine,
 	Button* ButtonToCreate,
 	int ButtonID,
 	EButtonType ButtonType,
 	std::string ButtonText,
-	SVector ButtonLocation, const wchar_t* AssetPath)
+	SVector ButtonLocation, 
+	const wchar_t* AssetPath,
+	float TextureAtlasHeight,
+	float TextureAtlasOffsetYMultiplier)
 {
 	// Create button class and setup button parameters
 	ButtonToCreate = new Button();
@@ -423,19 +426,28 @@ Button* CreateButton(
 	ButtonToCreate->ButtonParams.ButtonLocation = ButtonLocation;
 	ButtonToCreate->ButtonParams.AssetPathButtonBitmap = AssetPath;
 
-	// Create button bitmap and setup bitmap parameters
-	ButtonToCreate->ButtonBitmap.Bitmap = 
-		SetupBitmap(
-		ButtonToCreate->ButtonBitmap.Bitmap, 
+	ButtonToCreate->ButtonBitmap.Bitmap =
+		SetupBitmap(ButtonToCreate->ButtonBitmap.Bitmap,
 		ButtonToCreate->ButtonParams.AssetPathButtonBitmap,
 		Engine->Renderer);
-	SetupBitmapComponent(
-		&ButtonToCreate->ButtonBitmap, ButtonToCreate->ButtonBitmap.Bitmap);
+
+	if (ButtonType == AssetButtonThumbnail)
+	{
+		SetupBitmapComponent(
+			&ButtonToCreate->ButtonBitmap, ButtonToCreate->ButtonBitmap.Bitmap,
+			{ 90, TextureAtlasHeight }, { 1, TextureAtlasOffsetYMultiplier }, false);
+	}
+	else
+	{
+		SetupBitmapComponent(
+			&ButtonToCreate->ButtonBitmap, ButtonToCreate->ButtonBitmap.Bitmap);
+	}
+
 	ButtonToCreate->ButtonBitmap.ComponentLocation = ButtonToCreate->ButtonParams.ButtonLocation;	
 
 	// Setup bitmap source based on button type
 	SVector BitmapVector2D = { 0, 0 };
-	switch (ButtonToCreate->ButtonParams.ButtonType)
+	switch (ButtonType)
 	{
 	case OneSided:
 		BitmapVector2D.X = ButtonToCreate->ButtonBitmap.Bitmap->GetSize().width;
@@ -448,13 +460,7 @@ Button* CreateButton(
 		SetBitmapSourceLocationX(&ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
 		break;
 	case AssetButtonThumbnail:
-		// By default the bitmap source gets set by the dimensions of the bitmap
-		// but for the level editor asset thumbnail we want to crop the image to fit the asset button
 		BitmapVector2D = Engine->AssetButtonThumbnailDimensions;
-		SetBitmapSourceLocationX(
-			&ButtonToCreate->ButtonBitmap, BitmapVector2D.X);
-		SetBitmapSourceLocationY(
-			&ButtonToCreate->ButtonBitmap, BitmapVector2D.Y);
 		break;
 	}
 	Engine->StoredButtonBitmapComponents.push_back(&ButtonToCreate->ButtonBitmap);
@@ -462,16 +468,17 @@ Button* CreateButton(
 	// If asset button type, create asset background bitmap
 	if (ButtonType == AssetButtonThumbnail)
 	{
-		ButtonToCreate->AdditionalBackgroundBitmap.Bitmap = 
+		ButtonToCreate->AdditionalBackgroundBitmap.Bitmap =
 			SetupBitmap(ButtonToCreate->AdditionalBackgroundBitmap.Bitmap,
 			L"EngineContent/LevelEditor/AssetButtonBase.png", Engine->Renderer);
-		
+
 		SetupBitmapComponent(
-			&ButtonToCreate->AdditionalBackgroundBitmap, 
+			&ButtonToCreate->AdditionalBackgroundBitmap,
 			ButtonToCreate->AdditionalBackgroundBitmap.Bitmap);
-		
-		ButtonToCreate->AdditionalBackgroundBitmap.ComponentLocation = 
+
+		ButtonToCreate->AdditionalBackgroundBitmap.ComponentLocation =
 			ButtonToCreate->ButtonParams.ButtonLocation;
+		
 		Engine->StoredButtonBitmapComponents.push_back(&ButtonToCreate->AdditionalBackgroundBitmap);
 	}
 
@@ -515,14 +522,14 @@ Button* DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete)
 	{
 		for (int ButtonToDeleteIndex = 0; 
 			ButtonToDeleteIndex < ButtonToDelete->ButtonText.size(); 
-			ButtonToDeleteIndex++)
+			++ButtonToDeleteIndex)
 		{
 			BitmapComponent* CurrentButtonText = 
 				ButtonToDelete->ButtonText[ButtonToDeleteIndex];
 
 			for (int EngineStoredButtonsIndex = 0;
 				EngineStoredButtonsIndex < Engine->StoredButtonTexts.size(); 
-				EngineStoredButtonsIndex++)
+				++EngineStoredButtonsIndex)
 			{
 				if (Engine->StoredButtonTexts[EngineStoredButtonsIndex] == 
 					CurrentButtonText)
@@ -550,7 +557,7 @@ Button* DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete)
 
 void SetButtonText(Button* ButtonTextToUpdate, EButtonState ButtonState)
 {
-	for (int i = 0; i < ButtonTextToUpdate->ButtonText.size(); i++)
+	for (int i = 0; i < ButtonTextToUpdate->ButtonText.size(); ++i)
 	{
 		switch (ButtonState)
 		{
@@ -713,7 +720,7 @@ void Update(VoodooEngine* Engine)
 
 	if (Engine->EditorMode)
 	{
-		for (int i = 0; i < Engine->StoredEditorUpdateComponents.size(); i++)
+		for (int i = 0; i < Engine->StoredEditorUpdateComponents.size(); ++i)
 		{
 			Engine->StoredEditorUpdateComponents[i]->Update(Engine->DeltaTime);
 		}
@@ -721,7 +728,7 @@ void Update(VoodooEngine* Engine)
 
 	if (Engine->GameRunning)
 	{
-		for (int i = 0; i < Engine->StoredUpdateComponents.size(); i++)
+		for (int i = 0; i < Engine->StoredUpdateComponents.size(); ++i)
 		{
 			Engine->StoredUpdateComponents[i]->Update(Engine->DeltaTime);
 		}
@@ -992,7 +999,7 @@ void RenderBitmap(ID2D1HwndRenderTarget* Renderer, BitmapComponent* BitmapToRend
 void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer, 
 	std::vector<BitmapComponent*> StoredBitmaps, int RenderLayer)
 {
-	for (int i = 0; i < StoredBitmaps.size(); i++)
+	for (int i = 0; i < StoredBitmaps.size(); ++i)
 	{
 		// Go to next if bitmap is not valid
 		if (!StoredBitmaps[i]->Bitmap)
@@ -1014,7 +1021,7 @@ void RenderBitmaps(ID2D1HwndRenderTarget* Renderer,
 	std::vector<BitmapComponent*> BitmapsToRender, int MaxNumRenderLayers)
 {
 	// "+1" is there to account for the last render layer 
-	for (int i = 0; i < (MaxNumRenderLayers + 1); i++)
+	for (int i = 0; i < (MaxNumRenderLayers + 1); ++i)
 	{
 		RenderBitmapByLayer(Renderer, BitmapsToRender, i);
 	}
@@ -1083,7 +1090,7 @@ bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
 		return false;
 	}
 
-	for (int i = 0; i < Sender->CollisionTagsToIgnore.size(); i++)
+	for (int i = 0; i < Sender->CollisionTagsToIgnore.size(); ++i)
 	{
 		if (Sender->CollisionTagsToIgnore[i] == Target->CollisionTag)
 		{
@@ -1123,7 +1130,7 @@ void BroadcastCollision(Object* CallbackOwner, CollisionComponent* Sender, Colli
 	bool Ignore = false;
 	if (IsCollisionDetected(Sender, Target))
 	{
-		for (int i = 0; i < Sender->CollisionTagsToIgnore.size(); i++)
+		for (int i = 0; i < Sender->CollisionTagsToIgnore.size(); ++i)
 		{
 			if (Target->CollisionTag == Sender->CollisionTagsToIgnore[i])
 			{
@@ -1189,7 +1196,7 @@ void AssignCollisionRectangleToRender(
 void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
 	std::vector<CollisionComponent*> CollisionRectsToRender)
 {
-	for (int i = 0; i < CollisionRectsToRender.size(); i++)
+	for (int i = 0; i < CollisionRectsToRender.size(); ++i)
 	{
 		AssignCollisionRectangleToRender(Renderer, CollisionRectsToRender[i]);
 	}
@@ -1232,7 +1239,7 @@ SVector GetComponentRelativeLocation(
 bool SetDebugMode()
 {
 	bool NewDebugMode = false;
-	std::fstream File("EngineConfig.txt");
+	std::fstream File("Config.txt");
 	std::string String;
 	if (File.is_open())
 	{
@@ -1256,7 +1263,7 @@ bool SetDebugMode()
 bool SetEditorMode()
 {
 	bool NewEditorMode = false;
-	std::fstream File("EngineConfig.txt");
+	std::fstream File("Config.txt");
 	std::string String;
 	if (File.is_open())
 	{
@@ -1275,6 +1282,109 @@ bool SetEditorMode()
 	File.close();
 
 	return NewEditorMode;
+}
+
+int StoreTextureAtlasesFromFile(VoodooEngine* Engine)
+{
+	// Default to none 
+	// (negative values is not accounted for)
+	int TextureAtlasID = -1;
+
+	const wchar_t* FileName = L"GameContent/Data/TextureAtlasID.txt";
+	std::fstream File(FileName);
+	if (File.is_open())
+	{
+		std::string VerticalLine;
+		while (getline(File, VerticalLine))
+		{
+			std::stringstream Stream(VerticalLine);
+			std::string HorizontalLine;
+			std::vector<std::string> HorizontalLineNum;
+			while (Stream >> HorizontalLine)
+			{
+				HorizontalLineNum.push_back(HorizontalLine);
+			}
+			if (HorizontalLineNum.empty())
+			{
+				File.close();
+				return TextureAtlasID;
+			}
+
+			// Assign texture atlas ID
+			TextureAtlasID = std::stoi(HorizontalLineNum[0]);
+
+			// Assign asset path
+			std::wstring WideString = std::wstring(
+				HorizontalLineNum[1].begin(), HorizontalLineNum[1].end());
+			const wchar_t* AssetPath = WideString.c_str();
+
+			// Assign texture atlas
+			BitmapComponent TextureAtlas;
+			TextureAtlas.Bitmap = SetupBitmap(
+				TextureAtlas.Bitmap, AssetPath, Engine->Renderer);
+			SetupBitmapComponent(&TextureAtlas, TextureAtlas.Bitmap);
+
+			// Store texture atlas
+			Engine->StoredAssetTextureAtlases[TextureAtlasID] = { TextureAtlas, WideString };
+		}
+	}
+
+	File.close();
+
+	// Return the total amount of texture atlases 
+	return TextureAtlasID;
+}
+
+int StoreGameObjectIDsFromFile(VoodooEngine* Engine)
+{
+	// Default to none 
+	// (negative values is not accounted for)
+	int GameObjectID = -1;
+	
+	const wchar_t* FileName = L"GameContent/Data/GameObjectID.txt";
+	std::fstream File(FileName);
+	if (File.is_open())
+	{
+		std::string VerticalLine;
+		while (getline(File, VerticalLine))
+		{
+			std::stringstream Stream(VerticalLine);
+			std::string HorizontalLine;
+			std::vector<std::string> HorizontalLineNum;
+			while (Stream >> HorizontalLine)
+			{
+				HorizontalLineNum.push_back(HorizontalLine);
+			}
+			if (HorizontalLineNum.empty())
+			{
+				File.close();
+				return GameObjectID;
+			}
+
+			// Get gameobject ID 
+			GameObjectID = std::stoi(HorizontalLineNum[0]);
+
+			// Get the texture atlas
+			auto Iterator = Engine->StoredAssetTextureAtlases.find(std::stoi(HorizontalLineNum[1]));
+
+			// Get desired collision
+			bool CreateCollision = std::stoi(HorizontalLineNum[6]);
+
+			// Store game object ID
+			Engine->StoredGameObjectIDs[GameObjectID] =
+				{ Iterator->second.TextureAtlas.Bitmap,
+				std::stof(HorizontalLineNum[2]),std::stof(HorizontalLineNum[3]),
+				1,std::stof(HorizontalLineNum[4]),
+				std::stoi(HorizontalLineNum[5]),CreateCollision,
+				Iterator->second.TextureAtlasPath.c_str(),std::stof(HorizontalLineNum[7]),
+				std::stof(HorizontalLineNum[8]) };
+		}
+	}
+
+	File.close();
+
+	// Return the total amount of gameobjects
+	return GameObjectID;
 }
 
 void SaveLevelFile(VoodooEngine* Engine)
@@ -1311,7 +1421,7 @@ void SaveGameObjectsToFile(char* FileName, VoodooEngine* Engine)
 	std::ofstream File(FileName);
 	if (File.is_open())
 	{
-		for (int i = 0; i < Engine->StoredGameObjects.size(); i++)
+		for (int i = 0; i < Engine->StoredGameObjects.size(); ++i)
 		{
 			File << Engine->StoredGameObjects[i]->GameObjectID 
 				<< " " << Engine->StoredGameObjects[i]->Location.X 
@@ -1324,7 +1434,7 @@ void SaveGameObjectsToFile(char* FileName, VoodooEngine* Engine)
 
 void LoadGameObjectsFromFile(
 	char* FileName, VoodooEngine* Engine, 
-	std::vector<GameObject*>& LevelToAddGameObjects, bool DeleteExistingObjectsOnLoad)
+	std::vector<GameObject*>& LevelToAddGameObject, bool DeleteExistingObjectsOnLoad)
 {
 	if (DeleteExistingObjectsOnLoad)
 	{
@@ -1348,7 +1458,6 @@ void LoadGameObjectsFromFile(
 			{
 				HorizontalLineNum.push_back(HorizontalLine);
 			}
-
 			if (HorizontalLineNum.empty())
 			{
 				File.close();
@@ -1359,7 +1468,7 @@ void LoadGameObjectsFromFile(
 			SpawnLocation.X = (std::stof(HorizontalLineNum[1]));
 			SpawnLocation.Y = (std::stof(HorizontalLineNum[2]));
 			
-			Engine->AssetLoadFunctionPointer(GameObjectID, SpawnLocation, LevelToAddGameObjects);
+			Engine->AssetLoadFunctionPointer(GameObjectID, SpawnLocation, LevelToAddGameObject);
 		}
 	}
 
@@ -1369,7 +1478,7 @@ void LoadGameObjectsFromFile(
 void InitWindow(
 	VoodooEngine* Engine,
 	LPCWSTR WindowTitle, 
-	WNDPROC WindowProcedure,
+	WNDPROC WindowsProcedure,
 	int WindowResolutionWidth, 
 	int WindowResolutionHeight, 
 	bool WindowFullScreen)
@@ -1379,14 +1488,55 @@ void InitWindow(
 	Engine->Window.ScreenResolutionWidth = WindowResolutionWidth;
 	Engine->Window.ScreenResolutionHeight = WindowResolutionHeight;
 	Engine->Window.Fullscreen = WindowFullScreen;
-	CreateAppWindow(Engine->Window, WindowProcedure);
+	CreateAppWindow(Engine->Window, WindowsProcedure);
 
 	// Setup the renderer
 	Engine->Renderer = SetupRenderer(Engine->Renderer, Engine->Window.HWind);
 }
 
+void StorePlayerStartGameObjects(
+	VoodooEngine* Engine, int TotalNumberOfTextureAtlases, int TotalNumberOfGameObjects)
+{	
+	// Assign texture atlas ID
+	int PlayerStartTextureAtlasID = TotalNumberOfTextureAtlases + 1;
+
+	// Get the asset path of player start
+	SEditorAssetPathList AssetPath;
+
+	// Create texture atlas
+	BitmapComponent TextureAtlas;
+	TextureAtlas.Bitmap = SetupBitmap(
+		TextureAtlas.Bitmap, 
+		AssetPath.AssetPathPlayerStartBitmap_Left, 
+		Engine->Renderer);
+	SetupBitmapComponent(&TextureAtlas, TextureAtlas.Bitmap);
+	
+	// Store texture atlas
+	Engine->StoredAssetTextureAtlases[PlayerStartTextureAtlasID] = 
+		{ TextureAtlas, AssetPath.AssetPathPlayerStartBitmap_Left};
+
+	// Store player start game objects
+	int PlayerStartID = TotalNumberOfGameObjects + 1;
+	//for (int i = 0; i < 4; ++i)
+	//{
+	Engine->StoredGameObjectIDs[PlayerStartID] = 
+	{ TextureAtlas.Bitmap,
+	{ 90, 90 }, { 1, 1 }, RENDERLAYER_MAXNUM, false,
+	AssetPath.AssetPathPlayerStartBitmap_Left, 90, 1 };
+		//PlayerStartID++;
+	//}
+}
+
 void InitEngine(VoodooEngine* Engine)
 {
+	int TotalNumTextureAtlases = 0;
+	int TotalNumGameObjects = 0;
+
+	// Setup texture atlases and game object ID's from files
+	TotalNumTextureAtlases = StoreTextureAtlasesFromFile(Engine);
+	TotalNumGameObjects = StoreGameObjectIDsFromFile(Engine);
+	StorePlayerStartGameObjects(Engine, TotalNumTextureAtlases, TotalNumGameObjects);
+
 	// Assign based on configuration file if debug mode is true/false
 	Engine->DebugMode = SetDebugMode();
 	// Assign based on configuration file if editor mode is true/false
@@ -1445,7 +1595,7 @@ void Render(VoodooEngine* Engine)
 		Engine->Renderer, Engine->StoredCollisionComponents);
 
 	// Call render interface to all inherited objects
-	for (int i = 0; i < Engine->InterfaceObjects_Render.size(); i++)
+	for (int i = 0; i < Engine->InterfaceObjects_Render.size(); ++i)
 	{
 		Engine->InterfaceObjects_Render[i]->OnRenderBroadcast(Engine->Renderer);
 	}
@@ -1572,14 +1722,22 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 	CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown = false;
 
 	// Check for collision
-	for (int i = 0; i < Engine->StoredCollisionComponents.size(); i++)
+	for (int i = 0; i < Engine->StoredCollisionComponents.size(); ++i)
 	{
+		// Don't block character if found collision type is overlap
+		if (Engine->StoredCollisionComponents[i]->CollisionType == ECollisionType::Collision_Overlap)
+		{
+			continue;
+		}
+
 		// Collision detected left
 		if (IsCollisionDetected(
 			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionLeft, 
 			Engine->StoredCollisionComponents[i]))
 		{
 			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft = true;
+			CharacterToAddMovement->MoveComp.WallLeftHitCollisionLocation =
+				CharacterToAddMovement->Location.X;
 		}
 		// Collision detected right
 		if (IsCollisionDetected(
@@ -1587,6 +1745,8 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 			Engine->StoredCollisionComponents[i]))
 		{
 			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight = true;
+			CharacterToAddMovement->MoveComp.WallRightHitCollisionLocation =
+				CharacterToAddMovement->Location.X;
 		}
 		// Collision detected up
 		if (IsCollisionDetected(
@@ -1595,7 +1755,7 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 		{
 			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp = true;
 			CharacterToAddMovement->MoveComp.RoofHitCollisionLocation =
-				Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
+				CharacterToAddMovement->Location.Y;
 		}
 		// Collision detected down
 		if (IsCollisionDetected(
@@ -1617,7 +1777,8 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 		!CharacterToAddMovement->MoveComp.IsClimbing())
 	{
 		CharacterToAddMovement->MoveComp.UpdateGravity();
-		if (!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown)
+		if (!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown &&
+			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp)
 		{
 			NewLocation.Y += CharacterToAddMovement->MoveComp.Velocity;
 		}
@@ -1635,10 +1796,18 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 		else if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp &&
 			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown)
 		{
-			NewLocation.Y = 
-				CharacterToAddMovement->MoveComp.RoofHitCollisionLocation + 
-				CharacterToAddMovement->GameObjectDimensions.Y;
-		}	
+			NewLocation.Y = CharacterToAddMovement->MoveComp.RoofHitCollisionLocation + 5;
+		}
+		
+		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft)
+		{
+			NewLocation.X = CharacterToAddMovement->MoveComp.WallLeftHitCollisionLocation + 1;
+		}
+		
+		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight)
+		{
+			NewLocation.X = CharacterToAddMovement->MoveComp.WallRightHitCollisionLocation - 1;
+		}
 	}
 
 	// Update the new location of the quad collision rects 
