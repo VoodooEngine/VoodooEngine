@@ -33,10 +33,7 @@
 // - "I" stands for interface e.g. IInteract, IDamage
 // - Every function name with prefix "Update" e.g. "UpdateAnimation", will be called every frame
 
-// STL library
-#include <map>
-#include <string>
-#include <vector>
+#define VOODOOENGINE_API __declspec(dllexport)
 
 // Win32 API
 //---------------------
@@ -58,7 +55,10 @@
 #include <dwrite.h>
 #pragma comment(lib, "Dwrite.lib")
 
-#define VOODOOENGINE_API __declspec(dllexport)
+// STL library
+#include <map>
+#include <string>
+#include <vector>
 
 // Maximum number of allowed renderlayers
 #define RENDERLAYER_MAXNUM 10

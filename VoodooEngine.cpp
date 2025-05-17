@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "VoodooEngine.h"
 
 // File I/O
