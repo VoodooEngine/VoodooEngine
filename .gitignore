@@ -365,3 +365,5 @@ FodyWeavers.xsd
 /VoodooEngine.vcxproj.filters
 /pch.cpp
 /dllmain.cpp
+/pch.h
+/framework.h
