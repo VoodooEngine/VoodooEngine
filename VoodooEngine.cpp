@@ -6,6 +6,8 @@
 #include <fstream>
 #include <sstream>
 
+#pragma warning(disable:4996)
+
 // Create and register app window
 static void CreateAppWindow(SWindowParams& WindowParams, WNDPROC InputCallbackFunction)
 {
@@ -149,7 +151,7 @@ void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
 	Engine->FrameTargetTime = (1000 / Engine->FPS);
 }
 
-void BroadcastInput(std::vector<IInput*> StoredCallbacks, int Input, bool Pressed)
+void SendBroadcastInput(std::vector<IInput*> StoredCallbacks, int Input, bool Pressed)
 {
 	for (int i = 0; i < StoredCallbacks.size(); ++i)
 	{
@@ -1284,7 +1286,7 @@ bool SetEditorMode()
 	return NewEditorMode;
 }
 
-int StoreTextureAtlasesFromFile(VoodooEngine* Engine)
+void StoreTextureAtlasesFromFile(VoodooEngine* Engine)
 {
 	// Default to none 
 	// (negative values is not accounted for)
@@ -1307,7 +1309,7 @@ int StoreTextureAtlasesFromFile(VoodooEngine* Engine)
 			if (HorizontalLineNum.empty())
 			{
 				File.close();
-				return TextureAtlasID;
+				return;
 			}
 
 			// Assign texture atlas ID
@@ -1330,12 +1332,11 @@ int StoreTextureAtlasesFromFile(VoodooEngine* Engine)
 	}
 
 	File.close();
-
-	// Return the total amount of texture atlases 
-	return TextureAtlasID;
+ 
+	return;
 }
 
-int StoreGameObjectIDsFromFile(VoodooEngine* Engine)
+void StoreGameObjectIDsFromFile(VoodooEngine* Engine)
 {
 	// Default to none 
 	// (negative values is not accounted for)
@@ -1358,7 +1359,7 @@ int StoreGameObjectIDsFromFile(VoodooEngine* Engine)
 			if (HorizontalLineNum.empty())
 			{
 				File.close();
-				return GameObjectID;
+				return;
 			}
 
 			// Get gameobject ID 
@@ -1383,8 +1384,7 @@ int StoreGameObjectIDsFromFile(VoodooEngine* Engine)
 
 	File.close();
 
-	// Return the total amount of gameobjects
-	return GameObjectID;
+	return;
 }
 
 void SaveLevelFile(VoodooEngine* Engine)
@@ -1475,6 +1475,16 @@ void LoadGameObjectsFromFile(
 	File.close();
 }
 
+void LoadLevelFromFile(
+	std::vector<GameObject*>& LevelToAddGameObjects, const wchar_t* FilePath)
+{
+	char* LevelFileName = new char[100];
+	memset(LevelFileName, 0, 100);
+	wcstombs(LevelFileName, FilePath, 100);
+	LoadGameObjectsFromFile(LevelFileName, VoodooEngine::Engine, LevelToAddGameObjects, false);
+	delete[]LevelFileName;
+}
+
 void InitWindow(
 	VoodooEngine* Engine,
 	LPCWSTR WindowTitle, 
@@ -1494,11 +1504,10 @@ void InitWindow(
 	Engine->Renderer = SetupRenderer(Engine->Renderer, Engine->Window.HWind);
 }
 
-void StorePlayerStartGameObjects(
-	VoodooEngine* Engine, int TotalNumberOfTextureAtlases, int TotalNumberOfGameObjects)
+void StorePlayerStartGameObjects(VoodooEngine* Engine)
 {	
-	// Assign texture atlas ID
-	int PlayerStartTextureAtlasID = TotalNumberOfTextureAtlases + 1;
+	// Reserve "0" as texture atlas ID for player start
+	int PlayerStartTextureAtlasID = 0;
 
 	// Get the asset path of player start
 	SEditorAssetPathList AssetPath;
@@ -1507,35 +1516,36 @@ void StorePlayerStartGameObjects(
 	BitmapComponent TextureAtlas;
 	TextureAtlas.Bitmap = SetupBitmap(
 		TextureAtlas.Bitmap, 
-		AssetPath.AssetPathPlayerStartBitmap_Left, 
+		AssetPath.AssetPathPlayerStartBitmap, 
 		Engine->Renderer);
 	SetupBitmapComponent(&TextureAtlas, TextureAtlas.Bitmap);
 	
 	// Store texture atlas
 	Engine->StoredAssetTextureAtlases[PlayerStartTextureAtlasID] = 
-		{ TextureAtlas, AssetPath.AssetPathPlayerStartBitmap_Left};
+		{ TextureAtlas, AssetPath.AssetPathPlayerStartBitmap };
 
-	// Store player start game objects
-	int PlayerStartID = TotalNumberOfGameObjects + 1;
-	//for (int i = 0; i < 4; ++i)
-	//{
-	Engine->StoredGameObjectIDs[PlayerStartID] = 
-	{ TextureAtlas.Bitmap,
-	{ 90, 90 }, { 1, 1 }, RENDERLAYER_MAXNUM, false,
-	AssetPath.AssetPathPlayerStartBitmap_Left, 90, 1 };
-		//PlayerStartID++;
-	//}
+	// Reserve "0-3" for player start game object ID's
+	int PlayerStartID = 0;
+	float PlayerStartIconOffsetY = 1;
+	for (int i = 0; i < 4; ++i)
+	{
+		Engine->StoredGameObjectIDs[PlayerStartID] = 
+		{ TextureAtlas.Bitmap,
+		{ 64, 64 }, { 1, PlayerStartIconOffsetY }, RENDERLAYER_MAXNUM, false,
+		AssetPath.AssetPathPlayerStartBitmap, 64, PlayerStartIconOffsetY };
+		PlayerStartIconOffsetY++;
+		PlayerStartID++;
+	}
 }
 
 void InitEngine(VoodooEngine* Engine)
 {
-	int TotalNumTextureAtlases = 0;
-	int TotalNumGameObjects = 0;
+	// Setup player start game objects
+	StorePlayerStartGameObjects(Engine);
 
 	// Setup texture atlases and game object ID's from files
-	TotalNumTextureAtlases = StoreTextureAtlasesFromFile(Engine);
-	TotalNumGameObjects = StoreGameObjectIDsFromFile(Engine);
-	StorePlayerStartGameObjects(Engine, TotalNumTextureAtlases, TotalNumGameObjects);
+	StoreTextureAtlasesFromFile(Engine);
+	StoreGameObjectIDsFromFile(Engine);
 
 	// Assign based on configuration file if debug mode is true/false
 	Engine->DebugMode = SetDebugMode();

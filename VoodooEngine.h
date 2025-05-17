@@ -126,7 +126,7 @@ public:
 };
 // Sends input broadcast to all listeners whenever an input is pressed, 
 // input type ID is set by specific game
-extern "C" VOODOOENGINE_API void BroadcastInput(
+extern "C" VOODOOENGINE_API void SendBroadcastInput(
 	std::vector<IInput*> StoredCallbacks, int Input, bool Pressed);
 //---------------------
 
@@ -142,6 +142,25 @@ class IRender
 {
 public:
 	virtual void OnRenderBroadcast(ID2D1HwndRenderTarget* Renderer){};
+};
+
+// GameState callback
+//---------------------
+// Sends optionial broadcast to inherited object listeners when game has started/ended
+class IGameStateCallback
+{
+public:
+	// Optional to setup for each game object
+	virtual void OnGameStart(){};
+	virtual void OnGameEnd(){};
+};
+//---------------------
+
+// Interface called whenever a level is loaded
+class ILevelLoadCallback
+{
+public:
+	virtual void OnLevelLoaded(){};
 };
 
 // Utility
@@ -391,24 +410,12 @@ public:
 	std::vector<BitmapComponent*> ButtonText;
 };
 
-// GameState callback
-//---------------------
-// Sends optionial broadcast to inherited object listeners when game has started/ended
-class GameStateCallback
-{
-public:
-	// Optional to setup for each game object
-	virtual void OnGameStart(){};
-	virtual void OnGameEnd(){};
-};
-//---------------------
-
 // Game object 
 //---------------------
 // This class is used for all objects placed in levels, 
 // (if a game object needs custom stuff e.g. object with more than a single bitmap/collision etc. 
 // then this class would be a parent class to that object)
-class GameObject : public Object, public GameStateCallback
+class GameObject : public Object, public IGameStateCallback
 {
 public:
 	// Optional custom constructor, called after everything has been initialized for the game object
@@ -517,7 +524,8 @@ public:
 
 	std::vector<IRender*> InterfaceObjects_Render;
 	std::vector<IInput*> InterfaceObjects_InputCallback;
-	std::vector<GameStateCallback*> InterfaceObjects_GameStateCallback;
+	std::vector<IGameStateCallback*> InterfaceObjects_GameStateCallback;
+	std::vector<ILevelLoadCallback*> InterfaceObjects_LevelLoadCallback;
 
 	// Optional game background that can be used in game levels
 	// (Note this bitmap will always be set to render first in the painter's algorithm, 
@@ -648,10 +656,10 @@ public:
 		switch (Message)
 		{
 		case WM_KEYDOWN:
-			BroadcastInput(VoodooEngine::Engine->InterfaceObjects_InputCallback, WParam, true);
+			SendBroadcastInput(VoodooEngine::Engine->InterfaceObjects_InputCallback, WParam, true);
 			break;
 		case WM_KEYUP:
-			BroadcastInput(VoodooEngine::Engine->InterfaceObjects_InputCallback, WParam, false);
+			SendBroadcastInput(VoodooEngine::Engine->InterfaceObjects_InputCallback, WParam, false);
 			break;
 		default:
 			break;
@@ -1128,24 +1136,8 @@ struct SEditorAssetPathList
 	// Player start
 	// - The path to the png file of player start bitmap
 	// - (used by level editor to determine the player position on game start/level load)
-	const wchar_t* AssetPathPlayerStartBitmap_Up =
-		L"EngineContent/LevelEditor/PlayerStart/Start_Up.png";
-	const wchar_t* AssetPathPlayerStartBitmap_Down =
-		L"EngineContent/LevelEditor/PlayerStart/Start_Down.png";
-	const wchar_t* AssetPathPlayerStartBitmap_Left =
-		L"EngineContent/LevelEditor/PlayerStart/Start_Left.png";
-	const wchar_t* AssetPathPlayerStartBitmap_Right =
-		L"EngineContent/LevelEditor/PlayerStart/Start_Right.png";
-	// - The path to the png file of player start bitmap icon 
-	// - (used by the asset browser in level editor)
-	const wchar_t* AssetPathPlayerStartBitmap_Up_Icon =
-		L"EngineContent/LevelEditor/PlayerStart/Icon/Start_Up_Icon.png";
-	const wchar_t* AssetPathPlayerStartBitmap_Down_Icon =
-		L"EngineContent/LevelEditor/PlayerStart/Icon/Start_Down_Icon.png";
-	const wchar_t* AssetPathPlayerStartBitmap_Left_Icon =
-		L"EngineContent/LevelEditor/PlayerStart/Icon/Start_Left_Icon.png";
-	const wchar_t* AssetPathPlayerStartBitmap_Right_Icon =
-		L"EngineContent/LevelEditor/PlayerStart/Icon/Start_Right_Icon.png";
+	const wchar_t* AssetPathPlayerStartBitmap =
+		L"EngineContent/LevelEditor/PlayerStart_TextureAtlas.png";
 	//-----------------
 };
 
@@ -1562,8 +1554,7 @@ public:
 // based on which direction the player was coming from.
 // E.g. if player goes to the right limit of a level and the next level is loaded, 
 // then the "left" player start is where the player will be teleported to
-extern "C" VOODOOENGINE_API void StorePlayerStartGameObjects(
-	VoodooEngine* Engine, int TotalNumberOfTextureAtlases, int TotalNumberOfGameObjects);
+extern "C" VOODOOENGINE_API void StorePlayerStartGameObjects(VoodooEngine* Engine);
 
 // File I/O
 //-------------------------------------------
@@ -1571,9 +1562,9 @@ extern "C" VOODOOENGINE_API void StorePlayerStartGameObjects(
 extern "C" VOODOOENGINE_API bool SetDebugMode();
 extern "C" VOODOOENGINE_API bool SetEditorMode();
 // Gather all texture atlases ID and file paths from a file, create and store them in the engine
-extern "C" VOODOOENGINE_API int StoreTextureAtlasesFromFile(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void StoreTextureAtlasesFromFile(VoodooEngine* Engine);
 // Gather all the game object's ID and parameters info from a file and store them in the engine
-extern "C" VOODOOENGINE_API int StoreGameObjectIDsFromFile(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void StoreGameObjectIDsFromFile(VoodooEngine* Engine);
 // Saves the current open file as a "Lev" file
 extern "C" VOODOOENGINE_API void SaveLevelFile(VoodooEngine* Engine);
 // Opens windows file dialouge for which is used to select what level to open 
@@ -1583,6 +1574,8 @@ extern "C" VOODOOENGINE_API void SaveGameObjectsToFile(char* FileName, VoodooEng
 extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(
 	char* FileName, VoodooEngine* Engine, std::vector<GameObject*>& LevelToAddGameObject,
 	bool DeleteExistingObjectsOnLoad = true);
+extern "C" VOODOOENGINE_API void LoadLevelFromFile(
+	std::vector<GameObject*>& LevelToAddGameObjects, const wchar_t* FilePath);
 //-------------------------------------------
 
 // Level Editor
@@ -2473,6 +2466,9 @@ class Character : public GameObject, public UpdateComponent
 public:
 	MovementComponent MoveComp;
 	
+	virtual void OnGameObjectCreatedOverride(SVector SpawnLocation){};
+	virtual void OnGameObjectDeletedOverride(){};
+
 	void OnGameObjectCreated(SVector SpawnLocation)
 	{
 		VoodooEngine::Engine->StoredUpdateComponents.push_back(this);
@@ -2484,9 +2480,6 @@ public:
 			(UpdateComponent*)this, &VoodooEngine::Engine->StoredUpdateComponents);
 		OnGameObjectDeletedOverride();
 	}
-private:
-	virtual void OnGameObjectCreatedOverride(SVector SpawnLocation){};
-	virtual void OnGameObjectDeletedOverride(){};
 };
 
 // AI component that is used for directing AI characters 
