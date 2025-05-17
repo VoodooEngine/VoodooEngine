@@ -363,3 +363,5 @@ MigrationBackup/
 FodyWeavers.xsd
 /VoodooEngine.vcxproj
 /VoodooEngine.vcxproj.filters
+/pch.cpp
+/pch.cpp
