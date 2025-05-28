@@ -527,10 +527,10 @@ public:
 	std::vector<IGameStateCallback*> InterfaceObjects_GameStateCallback;
 	std::vector<ILevelLoadCallback*> InterfaceObjects_LevelLoadCallback;
 
-	// Optional game background that can be used in game levels
+	// Optional level background that can be used in game levels
 	// (Note this bitmap will always be set to render first in the painter's algorithm, 
 	// which means it will always be in the background and everything else will will be rendered on top of it)
-	BitmapComponent* CurrentGameBackground = nullptr;
+	BitmapComponent* CurrentLevelBackground = nullptr;
 
 	// This asset texture atlas map is used to store all the asset texture atlases used in the game,
 	// The map value is used to assing an asset texture atlas to a game object ID
@@ -1557,7 +1557,7 @@ public:
 extern "C" VOODOOENGINE_API void StorePlayerStartGameObjects(VoodooEngine* Engine);
 
 // File I/O
-//-------------------------------------------
+//---------------------
 // Read only
 extern "C" VOODOOENGINE_API bool SetDebugMode();
 extern "C" VOODOOENGINE_API bool SetEditorMode();
@@ -1575,11 +1575,11 @@ extern "C" VOODOOENGINE_API void LoadGameObjectsFromFile(
 	char* FileName, VoodooEngine* Engine, std::vector<GameObject*>& LevelToAddGameObject,
 	bool DeleteExistingObjectsOnLoad = true);
 extern "C" VOODOOENGINE_API void LoadLevelFromFile(
-	std::vector<GameObject*>& LevelToAddGameObjects, const wchar_t* FilePath);
-//-------------------------------------------
+	VoodooEngine* Engine, std::vector<GameObject*>& LevelToAddGameObjects, const wchar_t* FilePath);
+//---------------------
 
 // Level Editor
-//-------------------------------------------
+//---------------------
 class LevelEditor : public Object, public UpdateComponent, public IInput, public IEvent
 {
 
@@ -2433,7 +2433,20 @@ private:
 		}
 	};
 };
-//-------------------------------------------
+//---------------------
+
+// Level functions
+//---------------------
+extern "C" VOODOOENGINE_API std::vector<GameObject*> ActivateLevel(
+	VoodooEngine* Engine,
+	std::vector<GameObject*>& Level,
+	int PlayerID = -1,
+	int PlayerStartLeftID = -1,
+	int PlayerStartRightID = -1,
+	int PlayerStartUpID = -1,
+	int PlayerStartDownID = -1,
+	BitmapComponent* LevelBackground = nullptr);
+//---------------------
 
 // Set the frame rate limit per second
 extern "C" VOODOOENGINE_API void SetFPSLimit(VoodooEngine* Engine, float FPSLimit);

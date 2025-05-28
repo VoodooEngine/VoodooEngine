@@ -1475,13 +1475,86 @@ void LoadGameObjectsFromFile(
 }
 
 void LoadLevelFromFile(
-	std::vector<GameObject*>& LevelToAddGameObjects, const wchar_t* FilePath)
+	VoodooEngine* Engine, std::vector<GameObject*>& LevelToAddGameObjects, const wchar_t* FilePath)
 {
 	char* LevelFileName = new char[100];
-	memset(LevelFileName, 0, 100);
 	wcstombs(LevelFileName, FilePath, 100);
-	LoadGameObjectsFromFile(LevelFileName, VoodooEngine::Engine, LevelToAddGameObjects, false);
+	LoadGameObjectsFromFile(LevelFileName, Engine, LevelToAddGameObjects, false);
 	delete[]LevelFileName;
+}
+
+std::vector<GameObject*> ActivateLevel(
+	VoodooEngine* Engine,
+	std::vector<GameObject*>& Level,
+	int PlayerID,
+	int PlayerStartLeftID,
+	int PlayerStartRightID,
+	int PlayerStartUpID,
+	int PlayerStartDownID,
+	BitmapComponent* LevelBackground)
+{
+	if (LevelBackground)
+	{
+		Engine->CurrentLevelBackground = LevelBackground;
+	}
+
+	// First disable and hide all game objects (except player)
+	for (int i = 0; i < Engine->StoredGameObjects.size(); ++i)
+	{
+		if (Engine->StoredGameObjects[i]->GameObjectID == PlayerID)
+		{
+			continue;
+		}
+
+		Engine->StoredGameObjects[i]->GameObjectBitmap.BitmapParams.HiddenInGame = true;
+		Engine->StoredGameObjects[i]->AssetCollision.NoCollision = true;
+
+		// If in debug mode stop rendering the debug asset collision rect
+		if (Engine->DebugMode)
+		{
+			Engine->StoredGameObjects[i]->AssetCollision.RenderCollisionRect = false;
+		}
+	}
+
+	// store current level player start objects
+	std::vector<GameObject*> PlayerStartObjects;
+	
+	// Now only enable and show game objects in current active level
+	for (int i = 0; i < Level.size(); ++i)
+	{
+		Level[i]->GameObjectBitmap.BitmapParams.HiddenInGame = false;
+
+		// Only set asset collision active if set be have collision during gameplay
+		if (Level[i]->CreateDefaultAssetCollisionInGame)
+		{
+			Level[i]->AssetCollision.NoCollision = false;
+		}
+		// If in debug mode, render asset collision that is part of the current active level
+		if (Engine->DebugMode)
+		{
+			Level[i]->AssetCollision.RenderCollisionRect = true;
+		}
+
+		if (Level[i]->GameObjectID == PlayerStartLeftID)
+		{
+			PlayerStartObjects.push_back(Level[i]);
+		}
+		if (Level[i]->GameObjectID == PlayerStartRightID)
+		{
+			PlayerStartObjects.push_back(Level[i]);
+		}
+		if (Level[i]->GameObjectID == PlayerStartUpID)
+		{
+			PlayerStartObjects.push_back(Level[i]);
+		}
+		if (Level[i]->GameObjectID == PlayerStartDownID)
+		{
+			PlayerStartObjects.push_back(Level[i]);
+		}
+	}
+
+	// return the current level player start objects
+	return PlayerStartObjects;
 }
 
 void InitWindow(
@@ -1595,7 +1668,7 @@ void RenderLevelEditor(VoodooEngine* Engine)
 void Render(VoodooEngine* Engine)
 {
 	// Render the game background first (painter's algorithm)
-	RenderBitmap(Engine->Renderer, Engine->CurrentGameBackground);
+	RenderBitmap(Engine->Renderer, Engine->CurrentLevelBackground);
 
 	// Render all bitmaps (from gameobjects) stored in engine
 	RenderBitmaps(Engine->Renderer, Engine->StoredBitmapComponents, RENDERLAYER_MAXNUM);
