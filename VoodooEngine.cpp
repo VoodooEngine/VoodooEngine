@@ -1516,7 +1516,7 @@ std::vector<GameObject*> ActivateLevel(
 		}
 	}
 
-	// store current level player start objects
+	// Store current level player start objects
 	std::vector<GameObject*> PlayerStartObjects;
 	
 	// Now only enable and show game objects in current active level
