@@ -364,6 +364,7 @@ FodyWeavers.xsd
 <<<<<<< HEAD
 /VoodooEngine.vcxproj
 /VoodooEngine.vcxproj.filters
+/VoodooEngine.sln
 /pch.cpp
 /dllmain.cpp
 /pch.h
