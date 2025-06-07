@@ -4,25 +4,39 @@
 // --------------------
 // Supported features:
 // 
-// Graphics
+// GRAPHICS
 // - Creation of an application window with custom title name and icon using "Win32 API"
+// - Bitmap creation from png file using "Direct2D API"
 // - Bitmap rendering using "Direct2D API"
 // - Spritesheet animation
-// - Dynamic flip of bitmap at runtime
 // - Text rendering using "DirectWrite API"
 // 
-// Gameplay
+// INPUT
 // - User input for keyboard (using "Win32 API") and gamepad (using "XInput API") 
+// 
+// COLLISION
 // - Collision detection using "AABB" algorithm
+// 
+// SOUND
 // - Playing one shot sounds/looping sounds using "XAudio2 API"
+// 
+// TIME/UPDATE 
 // - Update function with deltatime
-// - Class/Interface support for gameplay such as, 
-// creating gameobjects dynamically during gameplay using base gameobject class 
-// and sending interface message to gameobjects e.g. open door, take damage from enemy etc.
+// - Timer countdown with function pointer callback when finished
+// 
+// SPAWN/DELETE GAMEOBJECTS 
+// - Creating gameobjects dynamically during gameplay using base gameobject class
+// 
+// INTERFACES
+// - RenderCallback
+// - InputCallback
+// - GameStateCallback
+// - LevelActivatedCallback
 // 
 // Tools
 // - Level editor 
 // - Saving/loading from files
+// --------------------
 
 // Naming conventions
 // --------------------
@@ -31,13 +45,17 @@
 // - "S" stands for "Struct" e.g. "SVector", "SColor"
 // - "E" stands for "enum" e.g. "EButtonType"
 // - "I" stands for interface e.g. IInteract, IDamage
-// - Every function name with prefix "Update" e.g. "UpdateAnimation", will be called every frame
+// - Every interface vector containers needs to have prefix "InterfaceObjects_" 
+// e.g. "InterfaceObjects_InputCallback", also add "Callback" as postfix for every interface vector container
+// - Every function name with prefix "Update" e.g. "UpdateAnimation", will be called every frame, 
+// NOTE never name anything with "Update" as prefix if you are not going to call it every frame 
+// --------------------
 
 #define VOODOOENGINE_API __declspec(dllexport)
 
 // Win32 API
 //---------------------
-// Exclude rarely-used stuff from Windows headers
+// Exclude rarely used stuff from Windows headers
 #define WIN32_LEAN_AND_MEAN
 
 #include <Windows.h>
@@ -59,6 +77,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <chrono>
 
 // Maximum number of allowed renderlayers
 #define RENDERLAYER_MAXNUM 10
@@ -131,14 +150,14 @@ extern "C" VOODOOENGINE_API void SendBroadcastInput(
 //---------------------
 
 // Generic event interface with no parameters 
-class IEvent
+class IEventCallback
 {
 public:
 	virtual void OnEventBroadcast(){};
 };
 
 // Interface used for when certain objects wants to handle custom render logic
-class IRender
+class IRenderCallback
 {
 public:
 	virtual void OnRenderBroadcast(ID2D1HwndRenderTarget* Renderer){};
@@ -156,11 +175,11 @@ public:
 };
 //---------------------
 
-// Interface called whenever a level is loaded
-class ILevelLoadCallback
+// Interface called whenever a level is activated
+class ILevelActivatedCallback
 {
 public:
-	virtual void OnLevelLoaded(){};
+	virtual void OnLevelActivated(){};
 };
 
 // Utility
@@ -197,7 +216,7 @@ struct SBitmapParameters
 {
 	int RenderLayer = 0;
 	float Opacity = 1;
-	bool HiddenInGame = false;
+	bool BitmapSetToNotRender = false;
 	SVector BitmapOffsetLeft;
 	SVector BitmapOffsetRight;
 	SVector BitmapSource;
@@ -209,13 +228,6 @@ public:
 	ID2D1Bitmap* Bitmap = nullptr;
 	SBitmapParameters BitmapParams = {};
 };
-
-// Flip a bitmap, can be used for e.g. for player/enemy movement 
-// (if "Flip" is set to false then bitmap will be "un flipped") 
-extern "C" VOODOOENGINE_API ID2D1Bitmap* FlipBitmap( 
-	ID2D1Bitmap* BitmapToFlip,
-	const wchar_t* FileName,
-	ID2D1HwndRenderTarget* Renderer, bool Flip = true);
 
 // Setup a bitmap
 extern "C" VOODOOENGINE_API ID2D1Bitmap* SetupBitmap(
@@ -355,6 +367,7 @@ void RenderCollisionRectangle(
 class UpdateComponent
 {
 public:
+	bool Paused = false;
 	virtual void Update(float DeltaTime) = 0;
 };
 //---------------------
@@ -418,6 +431,17 @@ public:
 class GameObject : public Object, public IGameStateCallback
 {
 public:
+	BitmapComponent GameObjectBitmap;
+	SVector GameObjectDimensions = { 0, 0 };
+	bool GameObjectBitmapHiddenInGame = false;
+
+	// Never account for negative value as game object ID as that is the default value
+	int GameObjectID = -1;
+
+	// Optional, can be set to not be created
+	CollisionComponent DefaultGameObjectCollision;
+	bool CreateDefaultGameObjectCollisionInGame = false;
+
 	// Optional custom constructor, called after everything has been initialized for the game object
 	virtual void OnGameObjectCreated(SVector SpawnLocation){};
 
@@ -427,15 +451,32 @@ public:
 	// that needs to be deleted
 	virtual void OnGameObjectDeleted(){};
 
-	BitmapComponent GameObjectBitmap;
-	SVector GameObjectDimensions = { 0, 0 };
+	// Enable/disable bitmap rendering/default object collision
+	virtual void UpdateGameObjectState(bool Enable = false)
+	{
+		if (Enable)
+		{
+			if (!GameObjectBitmapHiddenInGame)
+			{
+				GameObjectBitmap.BitmapParams.BitmapSetToNotRender = false;
+			}
+			
+			// Set no collision as default, and if set to have collision enable it
+			DefaultGameObjectCollision.NoCollision = true;
+			if (CreateDefaultGameObjectCollisionInGame)
+			{
+				DefaultGameObjectCollision.NoCollision = false;
+			}
+		}
+		else if (!Enable)
+		{
+			GameObjectBitmap.BitmapParams.BitmapSetToNotRender = true;
+			DefaultGameObjectCollision.NoCollision = true;
+		}
+	}
 
-	// Never account for negative value as game object ID as that is the default value
-	int GameObjectID = -1;
-
-	// Optional, can be set to not be created
-	CollisionComponent AssetCollision;
-	bool CreateDefaultAssetCollisionInGame = false;
+	virtual void OnGameStart(){};
+	virtual void OnGameEnd(){};
 };
 //---------------------
 
@@ -520,17 +561,24 @@ public:
 
 	// File I/O related
 	char FileName[100];
-	void(*AssetLoadFunctionPointer)(int, SVector, std::vector<GameObject*>&);
+	void(*AssetLoadFunctionPointer)(int, SVector, std::vector<GameObject*>&) = nullptr;
 
-	std::vector<IRender*> InterfaceObjects_Render;
+	std::vector<IRenderCallback*> InterfaceObjects_Render;
 	std::vector<IInput*> InterfaceObjects_InputCallback;
 	std::vector<IGameStateCallback*> InterfaceObjects_GameStateCallback;
-	std::vector<ILevelLoadCallback*> InterfaceObjects_LevelLoadCallback;
+	std::vector<ILevelActivatedCallback*> InterfaceObjects_LevelActivatedCallback;
 
 	// Optional level background that can be used in game levels
 	// (Note this bitmap will always be set to render first in the painter's algorithm, 
 	// which means it will always be in the background and everything else will will be rendered on top of it)
 	BitmapComponent* CurrentLevelBackground = nullptr;
+
+	// Player start game objects 
+	// (used to teleport player to the assigned player start object location during gameplay)
+	GameObject* PlayerStartObjectLeft = nullptr;
+	GameObject* PlayerStartObjectRight = nullptr;
+	GameObject* PlayerStartObjectUp = nullptr;
+	GameObject* PlayerStartObjectDown = nullptr;
 
 	// This asset texture atlas map is used to store all the asset texture atlases used in the game,
 	// The map value is used to assing an asset texture atlas to a game object ID
@@ -552,6 +600,9 @@ public:
 	std::vector<CollisionComponent*> StoredCollisionComponents;
 	std::vector<GameObject*> StoredGameObjects;
 	std::vector<UpdateComponent*> StoredUpdateComponents;
+
+	// Stored timer update components (exlusive for timers)
+	std::vector<UpdateComponent*> StoredTimerUpdateComponents;
 
 	// Used only for screen debug print
 	std::vector<BitmapComponent*> StoredScreenPrintTexts;
@@ -710,6 +761,26 @@ public:
 		return DefWindowProc(HWind, Message, WParam, LParam);
 	};
 
+	void SetPlayerStartObjectsVisibility(bool Show)
+	{
+		if (PlayerStartObjectLeft)
+		{
+			PlayerStartObjectLeft->GameObjectBitmap.BitmapParams.BitmapSetToNotRender = !Show;
+		}
+		if (PlayerStartObjectRight)
+		{
+			PlayerStartObjectRight->GameObjectBitmap.BitmapParams.BitmapSetToNotRender = !Show;
+		}
+		if (PlayerStartObjectUp)
+		{
+			PlayerStartObjectUp->GameObjectBitmap.BitmapParams.BitmapSetToNotRender = !Show;
+		}
+		if (PlayerStartObjectDown)
+		{
+			PlayerStartObjectDown->GameObjectBitmap.BitmapParams.BitmapSetToNotRender = !Show;
+		}
+	}
+
 	void StartGame()
 	{
 		GameRunning = true;
@@ -718,15 +789,17 @@ public:
 			StoredGameObjects[i]->OnGameStart();
 			// If no default asset collision is assigned, 
 			// then disable collision when game starts
-			if (!StoredGameObjects[i]->CreateDefaultAssetCollisionInGame)
+			if (!StoredGameObjects[i]->CreateDefaultGameObjectCollisionInGame)
 			{
-				StoredGameObjects[i]->AssetCollision.NoCollision = true;
+				StoredGameObjects[i]->DefaultGameObjectCollision.NoCollision = true;
 			}
 		}
 		for (int i = 0; i < InterfaceObjects_GameStateCallback.size(); ++i)
 		{
 			InterfaceObjects_GameStateCallback[i]->OnGameStart();
 		}
+
+		SetPlayerStartObjectsVisibility(false);
 	}
 	void EndGame()
 	{
@@ -737,15 +810,17 @@ public:
 			// If no default asset collision is assigned, 
 			// then enable collision when game ends 
 			// (so the asset is clickable in the editor during level edit)
-			if (!StoredGameObjects[i]->CreateDefaultAssetCollisionInGame)
+			if (!StoredGameObjects[i]->CreateDefaultGameObjectCollisionInGame)
 			{
-				StoredGameObjects[i]->AssetCollision.NoCollision = false;
+				StoredGameObjects[i]->DefaultGameObjectCollision.NoCollision = false;
 			}
 		}
 		for (int i = 0; i < InterfaceObjects_GameStateCallback.size(); ++i)
 		{
 			InterfaceObjects_GameStateCallback[i]->OnGameEnd();
 		}
+
+		SetPlayerStartObjectsVisibility(true);
 	}
 
 	template<class T>
@@ -774,7 +849,7 @@ public:
 		StoredGameObjects.push_back(new T);
 		StoredGameObjects.back()->Location = SpawnLocation;
 		StoredGameObjects.back()->GameObjectID = GameObjectID;
-		StoredGameObjects.back()->CreateDefaultAssetCollisionInGame = 
+		StoredGameObjects.back()->CreateDefaultGameObjectCollisionInGame = 
 			Iterator->second.CreateDefaultAssetCollision;
 		SetupBitmapComponent(&StoredGameObjects.back()->GameObjectBitmap, 
 			Iterator->second.TextureAtlas, 
@@ -791,18 +866,18 @@ public:
 		if (EditorMode || 
 			Iterator->second.CreateDefaultAssetCollision)
 		{
-			StoredGameObjects.back()->AssetCollision.CollisionRect =
+			StoredGameObjects.back()->DefaultGameObjectCollision.CollisionRect =
 				{ Iterator->second.TextureAtlasWidthHeight.X, Iterator->second.TextureAtlasWidthHeight.Y };
-			StoredGameObjects.back()->AssetCollision.ComponentLocation = SpawnLocation;
-			StoredGameObjects.back()->AssetCollision.CollisionTag = GameObjectID;
-			StoredGameObjects.back()->AssetCollision.Owner = StoredGameObjects.back();
+			StoredGameObjects.back()->DefaultGameObjectCollision.ComponentLocation = SpawnLocation;
+			StoredGameObjects.back()->DefaultGameObjectCollision.CollisionTag = GameObjectID;
+			StoredGameObjects.back()->DefaultGameObjectCollision.Owner = StoredGameObjects.back();
 			// Only set to render collision rect if in debug mode
 			if (DebugMode)
 			{
-				StoredGameObjects.back()->AssetCollision.RenderCollisionRect = true;
-				StoredGameObjects.back()->AssetCollision.CollisionRectColor = EditorCollisionRectColor;
+				StoredGameObjects.back()->DefaultGameObjectCollision.RenderCollisionRect = true;
+				StoredGameObjects.back()->DefaultGameObjectCollision.CollisionRectColor = EditorCollisionRectColor;
 			}
-			StoredCollisionComponents.push_back(&StoredGameObjects.back()->AssetCollision);
+			StoredCollisionComponents.push_back(&StoredGameObjects.back()->DefaultGameObjectCollision);
 		}
 		StoredGameObjects.back()->OnGameObjectCreated(SpawnLocation);
 		return (T*)StoredGameObjects.back();
@@ -820,15 +895,15 @@ public:
 		RemoveComponent(ClassToDelete, &this->StoredGameObjects);
 
 		if (EditorMode ||
-			ClassToDelete->CreateDefaultAssetCollisionInGame)
+			ClassToDelete->CreateDefaultGameObjectCollisionInGame)
 		{
-			RemoveComponent(&ClassToDelete->AssetCollision, &this->StoredCollisionComponents);
+			RemoveComponent(&ClassToDelete->DefaultGameObjectCollision, &this->StoredCollisionComponents);
 		}
 
 		// Custom optional deconstructor called before delete
 		// in case for example you want to delete anything custom made
 		// created outside of the default game object base class stuff 
-		// such as "GameObjectBitmap", "AssetCollision" etc.
+		// such as "GameObjectBitmap", "DefaultGameObjectCollision" etc.
 		ClassToDelete->OnGameObjectDeleted();
 		delete ClassToDelete;
 		ClassToDelete = nullptr;
@@ -972,6 +1047,17 @@ public:
 	bool IsJumping()
 	{
 		return Jumping;
+	}
+	// Force reset jump valus to default
+	// (only use this when you want to instant reset jump values e.g. on player death)
+	void ForceResetJumpValues()
+	{
+		Jumping = false;
+		JumpRequested = false;
+		Falling = false;
+		QuadCollisionParams.CollisionHitUp = false;
+		QuadCollisionParams.CollisionHitDown = false;
+		Velocity = 0;
 	}
 	// Will only allow climb if not falling or jumping
 	void Climb()
@@ -1163,6 +1249,37 @@ extern "C" VOODOOENGINE_API void RenderUITextsRenderLayer(VoodooEngine* Engine);
 extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
 //---------------------
 
+// Timer that counts down and sends a function pointer callback when finished
+class TimerHandle : public UpdateComponent
+{
+public:
+	float TimerValue = 1;
+	bool TimerCompleted = false;
+	void(*OnTimerEndFunctionPointer)(void);
+	void SetTimer(float NewTime)
+	{
+		VoodooEngine::Engine->StoredTimerUpdateComponents.push_back(this);
+		TimerCompleted = false;
+		TimerValue = NewTime;
+	};
+	void Update(float DeltaTime)
+	{
+		TimerValue -= 0.025;
+		if (TimerValue <= 0)
+		{
+			if (!TimerCompleted)
+			{
+				TimerCompleted = true;
+				OnTimerEndFunctionPointer();
+				VoodooEngine::Engine->RemoveComponent(
+					(UpdateComponent*)this, &VoodooEngine::Engine->StoredTimerUpdateComponents);
+			}
+		}
+	};
+};
+
+extern "C" VOODOOENGINE_API void PauseGame(bool SetGamePaused, VoodooEngine* Engine);
+
 // Gizmo
 //---------------------
 class Gizmo : public Object, public UpdateComponent, public IInput
@@ -1173,7 +1290,7 @@ public:
 	CollisionComponent GizmoCollision;
 
 	// Will send event whenever a game object is moved by the gizmo
-	std::vector<IEvent*> MoveGameObjectEventListeners;
+	std::vector<IEventCallback*> MoveGameObjectEventListeners;
 
 	GameObject* SelectedGameObject = nullptr;
 	GameObject* CurrentClickedGameObject = nullptr;
@@ -1220,12 +1337,12 @@ public:
 	{
 		if (Hidden)
 		{
-			GizmoBitmap.BitmapParams.HiddenInGame = true;
+			GizmoBitmap.BitmapParams.BitmapSetToNotRender = true;
 			GizmoCollision.NoCollision = true;
 		}
 		else
 		{
-			GizmoBitmap.BitmapParams.HiddenInGame = false;
+			GizmoBitmap.BitmapParams.BitmapSetToNotRender = false;
 			GizmoCollision.NoCollision = false;
 		}
 	};
@@ -1272,7 +1389,7 @@ public:
 
 			SelectedGameObject->Location = NewLocation;
 			SelectedGameObject->GameObjectBitmap.ComponentLocation = NewLocation;
-			SelectedGameObject->AssetCollision.ComponentLocation = NewLocation;
+			SelectedGameObject->DefaultGameObjectCollision.ComponentLocation = NewLocation;
 
 			for (int i = 0; i < MoveGameObjectEventListeners.size(); ++i)
 			{
@@ -1297,7 +1414,7 @@ public:
 		for (int GameObjectIndex = 0; GameObjectIndex < Engine->StoredGameObjects.size(); ++GameObjectIndex)
 		{
 			if (IsCollisionDetected(&Engine->Mouse.MouseCollider,
-				&Engine->StoredGameObjects[GameObjectIndex]->AssetCollision))
+				&Engine->StoredGameObjects[GameObjectIndex]->DefaultGameObjectCollision))
 			{
 				CollisionDetected = true;
 			}
@@ -1425,7 +1542,7 @@ public:
 		for (int GameObjectIndex = 0; GameObjectIndex < Engine->StoredGameObjects.size(); ++GameObjectIndex)
 		{
 			if (IsCollisionDetected(&Engine->Mouse.MouseCollider,
-				&Engine->StoredGameObjects[GameObjectIndex]->AssetCollision))
+				&Engine->StoredGameObjects[GameObjectIndex]->DefaultGameObjectCollision))
 			{
 				GameObjectsFound.push_back(Engine->StoredGameObjects[GameObjectIndex]);
 			}
@@ -1468,8 +1585,8 @@ public:
 	SVector GetGizmoOffsetLocation()
 	{
 		SVector OffsetLocation = 
-		{ (SelectedGameObject->AssetCollision.CollisionRect.X / 2) - 10,
-			(SelectedGameObject->AssetCollision.CollisionRect.Y / 2) -
+		{ (SelectedGameObject->DefaultGameObjectCollision.CollisionRect.X / 2) - 10,
+			(SelectedGameObject->DefaultGameObjectCollision.CollisionRect.Y / 2) -
 			GizmoBitmap.BitmapParams.BitmapSource.Y + 10 };
 
 		return OffsetLocation;
@@ -1580,7 +1697,7 @@ extern "C" VOODOOENGINE_API void LoadLevelFromFile(
 
 // Level Editor
 //---------------------
-class LevelEditor : public Object, public UpdateComponent, public IInput, public IEvent
+class LevelEditor : public Object, public UpdateComponent, public IInput, public IEventCallback
 {
 
 // Button locations
@@ -1912,8 +2029,8 @@ public:
 
 			HoveredButtonID = TAG_LEVEL_EDITOR_BUTTON_ID_NONE;
 			LevelEditorVisible = false;
-			LevelEditorUITop.BitmapParams.HiddenInGame = true;
-			LevelEditorUIOverlay.BitmapParams.HiddenInGame = true;
+			LevelEditorUITop.BitmapParams.BitmapSetToNotRender = true;
+			LevelEditorUIOverlay.BitmapParams.BitmapSetToNotRender = true;
 			UpdateAllButtonsState(EButtonState::Hidden);
 			SetMouseState(false, Engine);
 		}
@@ -1921,7 +2038,7 @@ public:
 		{
 			SetMouseState(true, Engine);
 			LevelEditorVisible = true;
-			LevelEditorUITop.BitmapParams.HiddenInGame = false;
+			LevelEditorUITop.BitmapParams.BitmapSetToNotRender = false;
 			if (!Engine->GameRunning)
 			{
 				UpdateAllButtonsState(EButtonState::Default);
@@ -1967,7 +2084,7 @@ public:
 
 		for (int i = 0; i < RenderLayerVisibilityEyeIconButtons.size(); ++i)
 		{
-			RenderLayerVisibilityEyeIconButtons[i]->ButtonBitmap.BitmapParams.HiddenInGame = SetToHide;
+			RenderLayerVisibilityEyeIconButtons[i]->ButtonBitmap.BitmapParams.BitmapSetToNotRender = SetToHide;
 			RenderLayerVisibilityEyeIconButtons[i]->ButtonCollider.NoCollision = DisableCollision;
 		}
 	};
@@ -1981,16 +2098,16 @@ public:
 				if (EnableRenderLayer)
 				{
 					Engine->StoredGameObjects[i]->
-						GameObjectBitmap.BitmapParams.HiddenInGame = false;
+						GameObjectBitmap.BitmapParams.BitmapSetToNotRender = false;
 					Engine->StoredGameObjects[i]->
-						AssetCollision.NoCollision = false;
+						DefaultGameObjectCollision.NoCollision = false;
 				}
 				else
 				{
 					Engine->StoredGameObjects[i]->
-						GameObjectBitmap.BitmapParams.HiddenInGame = true;
+						GameObjectBitmap.BitmapParams.BitmapSetToNotRender = true;
 					Engine->StoredGameObjects[i]->
-						AssetCollision.NoCollision = true;
+						DefaultGameObjectCollision.NoCollision = true;
 				}
 			}
 		}
@@ -2042,7 +2159,7 @@ public:
 			SetButtonState(ViewModeSelectionButton, EButtonState::Hidden);
 			SetAllRenderLayerEyeIconButtonsState(EButtonState::Hidden);
 			SetAllRenderLayerUITextVisibility(false);
-			LevelEditorUIOverlay.BitmapParams.HiddenInGame = true;
+			LevelEditorUIOverlay.BitmapParams.BitmapSetToNotRender = true;
 			break;
 		case LevelEditor::AssetBrowser:
 			AssetBrowserVisible = true;
@@ -2056,7 +2173,7 @@ public:
 			SetAllRenderLayerUITextVisibility(false);
 			if (!Engine->GameRunning)
 			{
-				LevelEditorUIOverlay.BitmapParams.HiddenInGame = false;
+				LevelEditorUIOverlay.BitmapParams.BitmapSetToNotRender = false;
 			}
 			break;
 		case LevelEditor::RenderLayer:
@@ -2071,7 +2188,7 @@ public:
 			SetAllRenderLayerUITextVisibility(true);
 			if (!Engine->GameRunning)
 			{
-				LevelEditorUIOverlay.BitmapParams.HiddenInGame = false;
+				LevelEditorUIOverlay.BitmapParams.BitmapSetToNotRender = false;
 			}
 			break;
 		case LevelEditor::ViewMode:
@@ -2084,7 +2201,7 @@ public:
 			SetButtonState(ViewModeSelectionButton, EButtonState::Disabled);
 			SetAllRenderLayerEyeIconButtonsState(EButtonState::Hidden);
 			SetAllRenderLayerUITextVisibility(false);
-			LevelEditorUIOverlay.BitmapParams.HiddenInGame = true;
+			LevelEditorUIOverlay.BitmapParams.BitmapSetToNotRender = true;
 			break;
 		}
 
@@ -2409,7 +2526,7 @@ private:
 		// Set all assets to hidden as default
 		for (int i = 0; i < CurrentStoredButtonAssets.size(); ++i)
 		{
-			CurrentStoredButtonAssets[i].AssetButton->ButtonBitmap.BitmapParams.HiddenInGame = true;
+			CurrentStoredButtonAssets[i].AssetButton->ButtonBitmap.BitmapParams.BitmapSetToNotRender = true;
 			CurrentStoredButtonAssets[i].AssetButton->ButtonCollider.NoCollision = true;
 			CurrentStoredButtonAssets[i].AssetButton->ButtonCollider.RenderCollisionRect = false;
 		}
@@ -2427,7 +2544,7 @@ private:
 				continue;
 			}
 
-			CurrentStoredButtonAssets[i].AssetButton->ButtonBitmap.BitmapParams.HiddenInGame = false;
+			CurrentStoredButtonAssets[i].AssetButton->ButtonBitmap.BitmapParams.BitmapSetToNotRender = false;
 			CurrentStoredButtonAssets[i].AssetButton->ButtonCollider.NoCollision = false;
 			CurrentStoredButtonAssets[i].AssetButton->ButtonCollider.RenderCollisionRect = true;
 		}
@@ -2437,7 +2554,7 @@ private:
 
 // Level functions
 //---------------------
-extern "C" VOODOOENGINE_API std::vector<GameObject*> ActivateLevel(
+extern "C" VOODOOENGINE_API void ActivateLevel(
 	VoodooEngine* Engine,
 	std::vector<GameObject*>& Level,
 	int PlayerID = -1,
@@ -2478,20 +2595,15 @@ class Character : public GameObject, public UpdateComponent
 {
 public:
 	MovementComponent MoveComp;
-	
-	virtual void OnGameObjectCreatedOverride(SVector SpawnLocation){};
-	virtual void OnGameObjectDeletedOverride(){};
 
 	void OnGameObjectCreated(SVector SpawnLocation)
 	{
 		VoodooEngine::Engine->StoredUpdateComponents.push_back(this);
-		OnGameObjectCreatedOverride(SpawnLocation);
 	}
 	void OnGameObjectDeleted()
 	{
 		VoodooEngine::Engine->RemoveComponent(
 			(UpdateComponent*)this, &VoodooEngine::Engine->StoredUpdateComponents);
-		OnGameObjectDeletedOverride();
 	}
 };
 
@@ -2515,13 +2627,13 @@ public:
 	{
 		if (Show)
 		{
-			GameObjectBitmap.BitmapParams.HiddenInGame = false;
-			AssetCollision.RenderCollisionRect = true;
+			GameObjectBitmap.BitmapParams.BitmapSetToNotRender = false;
+			DefaultGameObjectCollision.RenderCollisionRect = true;
 		}
 		else
 		{
-			GameObjectBitmap.BitmapParams.HiddenInGame = true;
-			AssetCollision.RenderCollisionRect = false;
+			GameObjectBitmap.BitmapParams.BitmapSetToNotRender = true;
+			DefaultGameObjectCollision.RenderCollisionRect = false;
 		}
 	}
 };
@@ -2541,154 +2653,146 @@ extern "C" VOODOOENGINE_API SVector AddMovementInput(Character* CharacterToAddMo
 extern "C" VOODOOENGINE_API SVector AddMovementAI(AIComponent& AIComp);
 //---------------------
 
-class Trigger : public Object
+class Trigger : public GameObject, public UpdateComponent
 {
-public:
-	CollisionComponent TriggerBox;
+public:	
+	std::vector<CollisionComponent*> CollisionTargets;
 
-	void SetTriggerParameters(int CollisionTag, SVector TriggerBoxSize, VoodooEngine* Engine)
+	void OnGameObjectCreated(SVector SpawnLocation)
 	{
-		TriggerBox.CollisionType = ECollisionType::Collision_Overlap;
-		TriggerBox.CollisionRect = TriggerBoxSize;
-		TriggerBox.CollisionRectColor = Engine->ColorYellow;
-		TriggerBox.CollisionTag = CollisionTag;
-		TriggerBox.Owner = this;
+		VoodooEngine::Engine->StoredUpdateComponents.push_back(this);
+	}
+	void OnGameObjectDeleted()
+	{
+		VoodooEngine::Engine->RemoveComponent(
+			(UpdateComponent*)this, &VoodooEngine::Engine->StoredUpdateComponents);
+	}
+
+	void OnGameStart()
+	{
+		if (!VoodooEngine::Engine->DebugMode)
+		{
+			GameObjectBitmap.BitmapParams.BitmapSetToNotRender = true;
+		}
+	}
+	void OnGameEnd()
+	{
+		GameObjectBitmap.BitmapParams.BitmapSetToNotRender = false;
+	}
+
+	void Update(float DeltaTime)
+	{
+		for (int i = 0; i < CollisionTargets.size(); ++i)
+		{
+			BroadcastCollision(this, &DefaultGameObjectCollision, CollisionTargets[i]);
+		}
+	}
+
+	// Optional to override the collision parameters 
+	// (by default the collision rect is the same size as the "GameObjectBitmap" for the trigger)
+	void SetTriggerParameters(int CollisionTag, SVector TriggerBoxSize)
+	{
+		DefaultGameObjectCollision.CollisionType = ECollisionType::Collision_Overlap;
+		DefaultGameObjectCollision.CollisionRect = TriggerBoxSize;
+		DefaultGameObjectCollision.CollisionRectColor = VoodooEngine::Engine->ColorYellow;
+		DefaultGameObjectCollision.CollisionTag = CollisionTag;
+		DefaultGameObjectCollision.Owner = this;
+
+		if (VoodooEngine::Engine->DebugMode)
+		{
+			DefaultGameObjectCollision.RenderCollisionRect = true;
+		}
 	}
 
 	void SetTriggerLocation(SVector NewLocation)
 	{
 		Location = NewLocation;
-		TriggerBox.ComponentLocation = NewLocation;
+		GameObjectBitmap.ComponentLocation = NewLocation;
+		DefaultGameObjectCollision.ComponentLocation = NewLocation;
 	}
 
-	// These can be overriden by instances of this class for custom logic on begin/end overlap
-	virtual void OnBeginOverlapOverride(
-		int SenderCollisionTag, int TargetCollisionTag, Object* Target = nullptr){}
-	virtual void OnEndOverlapOverride(
-		int SenderCollisionTag, int TargetCollisionTag){}
-
-	// These are called by the "Broadcast collision" function, 
-	// the function itself calls the begin/end overlap override functions
-	void OnBeginOverlap(int SenderCollisionTag, int TargetCollisionTag, Object* Target = nullptr)
-	{
-		OnBeginOverlapOverride(SenderCollisionTag, TargetCollisionTag, Target);
-	}
-	void OnEndOverlap(int SenderCollisionTag, int TargetCollisionTag)
-	{
-		OnEndOverlapOverride(SenderCollisionTag, TargetCollisionTag);
-	}
+	// These are called by the "BroadcastCollision" function
+	void OnBeginOverlap(int SenderCollisionTag, int TargetCollisionTag, Object* Target = nullptr){};
+	void OnEndOverlap(int SenderCollisionTag, int TargetCollisionTag){};
 };
 
-class LoadLevelTrigger : public Trigger, public UpdateComponent
+enum ELoadLevelTriggerType
+{
+	LevelTriggerType_None,
+	LevelTriggerType_Left,
+	LevelTriggerType_Right,
+	LevelTriggerType_Up,
+	LevelTriggerType_Down
+};
+
+class LoadLevelTrigger : public Trigger
 {
 public:
-	// "-1" as default as negative value accounts for nothing (i.e. null)
-	int LevelID = -1;
-	
-	// Assign the objects that can be detected by the trigger
-	std::vector<CollisionComponent*> CollisionTargets;
-
-	void(*LoadLevelFunctionPointer)(int LevelID);
-
-	void ActivateTrigger(VoodooEngine* Engine)
+	LoadLevelTrigger(
+		ELoadLevelTriggerType TriggerType = ELoadLevelTriggerType::LevelTriggerType_None, 
+		int CollisionTag = -1)
 	{
-		EngineReference = Engine;
-
-		if (!EngineReference)
-		{
-			return;
-		}
-
-		if (!UpdateComponentFound())
-		{
-			TriggerBox.NoCollision = false;
-			EngineReference->StoredUpdateComponents.push_back(this);
-		}
-		
-		// Only set to render trigger box if in debug mode	
-		if (EngineReference->DebugMode)
-		{
-			if (!RenderCollisionComponentFound())
-			{
-				TriggerBox.RenderCollisionRect = true;
-				EngineReference->StoredCollisionComponents.push_back(&TriggerBox);
-			}
-		}
-
-		// Debug only delete later
-		ScreenPrint("load_level_trigger_loaded", EngineReference);
+		AddTriggerComponentsToEngine();
+		LoadLevelTriggerType = TriggerType;
+		SetupTrigger(TriggerType, CollisionTag);
 	}
-	void DeactivateTrigger()
+	~LoadLevelTrigger()
 	{
-		if (!EngineReference)
-		{
-			return;
-		}
-
-		if (UpdateComponentFound())
-		{
-			TriggerBox.NoCollision = true;
-			EngineReference->RemoveComponent(
-				(UpdateComponent*)this, &EngineReference->StoredUpdateComponents);
-		}
-
-		if (EngineReference->DebugMode)
-		{
-			if (RenderCollisionComponentFound())
-			{
-				TriggerBox.RenderCollisionRect = false;
-				EngineReference->RemoveComponent(
-					(CollisionComponent*)&TriggerBox, &EngineReference->StoredCollisionComponents);
-			}
-		}
-
-		// Debug only delete later
-		ScreenPrint("load_level_trigger_unloaded", EngineReference);
+		RemoveTriggerComponentsFromEngine();
 	}
 
-	void Update(float DeltaTime)
+	ELoadLevelTriggerType LoadLevelTriggerType = ELoadLevelTriggerType::LevelTriggerType_None;
+	void(*OnLoadLevelTriggerOverlap)(ELoadLevelTriggerType TriggerType) = nullptr;
+
+	void OnBeginOverlap(int SenderCollisionTag, int TargetCollisionTag, Object* Target = nullptr)
 	{
-		//ScreenPrint("load_level_trigger_update_called", EngineReference);
+		Trigger::OnBeginOverlap(SenderCollisionTag, TargetCollisionTag, Target);
 
-		for (int i = 0; i < CollisionTargets.size(); ++i)
-		{
-			BroadcastCollision(this, &TriggerBox, CollisionTargets[i]);
-		}
-	}
+		OnLoadLevelTriggerOverlap(LoadLevelTriggerType);
 
-	void OnBeginOverlapOverride(int SenderCollisionTag, int TargetCollisionTag, Object* Target = nullptr)
-	{
-		LoadLevelFunctionPointer(LevelID);
-
-		// Debug only delete later
-		ScreenPrint("begin_overlap_load_level_trigger", EngineReference);
+		ScreenPrint("player_overlap_load_level_trigger", VoodooEngine::Engine);
 	}
 
 private:
-	VoodooEngine* EngineReference;
-
-	bool UpdateComponentFound()
+	void AddTriggerComponentsToEngine()
 	{
-		for (int i = 0; i < EngineReference->StoredUpdateComponents.size(); ++i)
-		{
-			if (EngineReference->StoredUpdateComponents[i] == this)
-			{
-				return true;
-			}
-		}
-
-		return false;
+		VoodooEngine::Engine->StoredCollisionComponents.push_back(&DefaultGameObjectCollision);
+		VoodooEngine::Engine->StoredUpdateComponents.push_back(this);
 	}
-	bool RenderCollisionComponentFound()
+	void RemoveTriggerComponentsFromEngine()
 	{
-		for (int i = 0; i < EngineReference->StoredCollisionComponents.size(); ++i)
-		{
-			if (EngineReference->StoredCollisionComponents[i] == &TriggerBox)
-			{
-				return true;
-			}
-		}
+		VoodooEngine::Engine->RemoveComponent(
+			(CollisionComponent*)&DefaultGameObjectCollision, &VoodooEngine::Engine->StoredCollisionComponents);
+		VoodooEngine::Engine->RemoveComponent(
+			(UpdateComponent*)this, &VoodooEngine::Engine->StoredUpdateComponents);
+	}
+	void SetupTrigger(
+		ELoadLevelTriggerType TriggerType = ELoadLevelTriggerType::LevelTriggerType_None,
+		int CollisionTag = -1)
+	{
+		SVector HorzontalTriggerRectSize = { 25, (float)VoodooEngine::Engine->ScreenHeightDefault };
+		SVector VerticalTriggerRectSize = { (float)VoodooEngine::Engine->ScreenWidthDefault, 25 };
 
-		return false;
+		switch (TriggerType)
+		{
+		case LevelTriggerType_None:
+			break;
+		case LevelTriggerType_Left:
+			SetTriggerParameters(CollisionTag, HorzontalTriggerRectSize);
+			break;
+		case LevelTriggerType_Right:
+			SetTriggerParameters(CollisionTag, HorzontalTriggerRectSize);
+			SetTriggerLocation({ 1900, 0 });
+			break;
+		case LevelTriggerType_Up:
+			SetTriggerParameters(CollisionTag, VerticalTriggerRectSize);
+			break;
+		case LevelTriggerType_Down:
+			SetTriggerParameters(CollisionTag, VerticalTriggerRectSize);
+			SetTriggerLocation({ 0, 1060 });
+			break;
+		default:
+			break;
+		}
 	}
 };

@@ -563,13 +563,13 @@ void SetButtonText(Button* ButtonTextToUpdate, EButtonState ButtonState)
 		switch (ButtonState)
 		{
 		case Default:
-			ButtonTextToUpdate->ButtonText[i]->BitmapParams.HiddenInGame = false;
+			ButtonTextToUpdate->ButtonText[i]->BitmapParams.BitmapSetToNotRender = false;
 			break;
 		case Disabled:
-			ButtonTextToUpdate->ButtonText[i]->BitmapParams.HiddenInGame = false;
+			ButtonTextToUpdate->ButtonText[i]->BitmapParams.BitmapSetToNotRender = false;
 			break;
 		case Hidden:
-			ButtonTextToUpdate->ButtonText[i]->BitmapParams.HiddenInGame = true;
+			ButtonTextToUpdate->ButtonText[i]->BitmapParams.BitmapSetToNotRender = true;
 			break;
 		}
 	}
@@ -586,8 +586,8 @@ void SetButtonState(
 	switch (NewButtonState)
 	{
 	case Default:
-		ButtonToUpdate->ButtonBitmap.BitmapParams.HiddenInGame = false;
-		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = false;
+		ButtonToUpdate->ButtonBitmap.BitmapParams.BitmapSetToNotRender = false;
+		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.BitmapSetToNotRender = false;
 		ButtonToUpdate->ButtonCollider.NoCollision = false;
 		SetButtonText(ButtonToUpdate, NewButtonState);
 		// Offset the bitmap source to the "default" location
@@ -600,8 +600,8 @@ void SetButtonState(
 		}
 		break;
 	case Disabled:
-		ButtonToUpdate->ButtonBitmap.BitmapParams.HiddenInGame = false;
-		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = false;
+		ButtonToUpdate->ButtonBitmap.BitmapParams.BitmapSetToNotRender = false;
+		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.BitmapSetToNotRender = false;
 		ButtonToUpdate->ButtonCollider.NoCollision = true;
 		SetButtonText(ButtonToUpdate, NewButtonState);
 		// Offset the bitmap source to the "disabled" location
@@ -614,8 +614,8 @@ void SetButtonState(
 		}
 		break;
 	case Hidden:
-		ButtonToUpdate->ButtonBitmap.BitmapParams.HiddenInGame = true;
-		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.HiddenInGame = true;
+		ButtonToUpdate->ButtonBitmap.BitmapParams.BitmapSetToNotRender = true;
+		ButtonToUpdate->AdditionalBackgroundBitmap.BitmapParams.BitmapSetToNotRender = true;
 		ButtonToUpdate->ButtonCollider.NoCollision = true;
 		SetButtonText(ButtonToUpdate, NewButtonState);
 		break;
@@ -689,7 +689,7 @@ void SetMouseState(bool Show, VoodooEngine* Engine)
 	if (Show)
 	{
 		Engine->Mouse.MouseCollider.NoCollision = false;
-		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame = false;
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSetToNotRender = false;
 
 		if (Engine->DebugMode ||
 			!Engine->Mouse.MouseBitmap.Bitmap)
@@ -706,7 +706,7 @@ void SetMouseState(bool Show, VoodooEngine* Engine)
 		}
 
 		Engine->Mouse.MouseCollider.NoCollision = true;
-		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame = true;
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSetToNotRender = true;
 		Engine->Mouse.MouseCollider.RenderCollisionRect = false;
 
 		Engine->Mouse.MouseCollider.CollisionRectColor = { 0.2, 0.5, 0 };
@@ -731,13 +731,22 @@ void Update(VoodooEngine* Engine)
 	{
 		for (int i = 0; i < Engine->StoredUpdateComponents.size(); ++i)
 		{
-			Engine->StoredUpdateComponents[i]->Update(Engine->DeltaTime);
+			if (!Engine->StoredUpdateComponents[i]->Paused)
+			{
+				Engine->StoredUpdateComponents[i]->Update(Engine->DeltaTime);
+			}
 		}
+	}
+
+	// Only used for timers
+	for (int i = 0; i < Engine->StoredTimerUpdateComponents.size(); ++i)
+	{
+		Engine->StoredTimerUpdateComponents[i]->Update(Engine->DeltaTime);
 	}
 }
 
 ID2D1Bitmap* BitmapCreationSetup(
-	ID2D1Bitmap* BitmapToCreate, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer, bool Flip)
+	ID2D1Bitmap* BitmapToCreate, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer)
 {
 	// If bitmap is already created, 
 	// then release previous bitmap to avoid memory leak before making it nullptr
@@ -780,39 +789,14 @@ ID2D1Bitmap* BitmapCreationSetup(
 	IWICFormatConverter* WicConverter = nullptr;
 	Result = WicFactory->CreateFormatConverter(&WicConverter);
 
-	// Flip image if true, otherwise go with default image
-	if (Flip)
-	{
-		// Setup flip rotator
-		IWICBitmapFlipRotator* ImageFlip = nullptr;
-		Result = WicFactory->CreateBitmapFlipRotator(&ImageFlip);
-		Result = ImageFlip->Initialize(DecoderFrame, WICBitmapTransformFlipHorizontal);
-
-		// Setup converter (for flipped image)
-		Result = WicConverter->Initialize(
-			ImageFlip,
-			GUID_WICPixelFormat32bppPBGRA,
-			WICBitmapDitherTypeNone,
-			nullptr,
-			0,
-			WICBitmapPaletteTypeCustom);
-
-		if (ImageFlip)
-		{ 
-			ImageFlip->Release();
-		}
-	}
-	else
-	{
-		// Setup the converter (for NON flipped image)
-		Result = WicConverter->Initialize(
-			DecoderFrame,
-			GUID_WICPixelFormat32bppPBGRA,
-			WICBitmapDitherTypeNone,
-			nullptr,
-			0,
-			WICBitmapPaletteTypeCustom);
-	}
+	// Setup the WIC bitmap converter
+	Result = WicConverter->Initialize(
+		DecoderFrame,
+		GUID_WICPixelFormat32bppPBGRA,
+		WICBitmapDitherTypeNone,
+		nullptr,
+		0,
+		WICBitmapPaletteTypeCustom);
 
 	Renderer->CreateBitmapFromWicBitmap(
 		WicConverter, nullptr, &BitmapToCreate);
@@ -840,7 +824,7 @@ ID2D1Bitmap* BitmapCreationSetup(
 ID2D1Bitmap* SetupBitmap(
 	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget * Renderer)
 {
-	 return BitmapCreationSetup(BitmapToSetup, FileName, Renderer, false);
+	 return BitmapCreationSetup(BitmapToSetup, FileName, Renderer);
 }
 
 void SetupBitmapComponent(
@@ -884,12 +868,6 @@ void SetupBitmapComponent(
 			TextureAtlasWidthHeight.Y,
 			TextureAtlasOffsetMultiplierWidthHeight.Y);
 	}
-}
-
-ID2D1Bitmap* FlipBitmap(
-	ID2D1Bitmap* BitmapToFlip, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer, bool Flip)
-{
-	return BitmapCreationSetup(BitmapToFlip, FileName, Renderer, Flip);
 }
 
 void SetBitmapSourceLocationX(
@@ -1007,7 +985,7 @@ void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer,
 			continue;
 
 		// Go to next bitmap if set to be hidden in game
-		if (StoredBitmaps[i]->BitmapParams.HiddenInGame)
+		if (StoredBitmaps[i]->BitmapParams.BitmapSetToNotRender)
 			continue;
 
 		// Go to next if bitmap is not assigned as current render layer
@@ -1052,7 +1030,7 @@ void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engi
 	}
 	
 	if (Engine->Mouse.MouseBitmap.Bitmap == nullptr ||
-		Engine->Mouse.MouseBitmap.BitmapParams.HiddenInGame)
+		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSetToNotRender)
 	{
 		return;
 	}
@@ -1235,6 +1213,14 @@ SVector GetComponentRelativeLocation(
 		ComponentOwner->Location.Y + Component->ComponentLocation.Y};
 
 	return CurrentComponentLocation;
+}
+
+void PauseGame(bool SetGamePaused, VoodooEngine* Engine)
+{
+	for (int i = 0; i < Engine->StoredUpdateComponents.size(); ++i)
+	{
+		Engine->StoredUpdateComponents[i]->Paused = SetGamePaused;
+	}
 }
 
 bool SetDebugMode()
@@ -1483,7 +1469,7 @@ void LoadLevelFromFile(
 	delete[]LevelFileName;
 }
 
-std::vector<GameObject*> ActivateLevel(
+void ActivateLevel(
 	VoodooEngine* Engine,
 	std::vector<GameObject*>& Level,
 	int PlayerID,
@@ -1506,55 +1492,59 @@ std::vector<GameObject*> ActivateLevel(
 			continue;
 		}
 
-		Engine->StoredGameObjects[i]->GameObjectBitmap.BitmapParams.HiddenInGame = true;
-		Engine->StoredGameObjects[i]->AssetCollision.NoCollision = true;
+		Engine->StoredGameObjects[i]->UpdateGameObjectState(false);
 
 		// If in debug mode stop rendering the debug asset collision rect
 		if (Engine->DebugMode)
 		{
-			Engine->StoredGameObjects[i]->AssetCollision.RenderCollisionRect = false;
+			Engine->StoredGameObjects[i]->DefaultGameObjectCollision.RenderCollisionRect = false;
 		}
 	}
-
-	// Store current level player start objects
-	std::vector<GameObject*> PlayerStartObjects;
 	
+	// Make the player start objects disabled as default when activating a new level,
+	// in case a level does not contain player start objects
+	Engine->PlayerStartObjectLeft = nullptr;
+	Engine->PlayerStartObjectRight = nullptr;
+	Engine->PlayerStartObjectUp = nullptr;
+	Engine->PlayerStartObjectDown = nullptr;
+
 	// Now only enable and show game objects in current active level
 	for (int i = 0; i < Level.size(); ++i)
 	{
-		Level[i]->GameObjectBitmap.BitmapParams.HiddenInGame = false;
+		Level[i]->UpdateGameObjectState(true);
 
-		// Only set asset collision active if set be have collision during gameplay
-		if (Level[i]->CreateDefaultAssetCollisionInGame)
-		{
-			Level[i]->AssetCollision.NoCollision = false;
-		}
 		// If in debug mode, render asset collision that is part of the current active level
 		if (Engine->DebugMode)
 		{
-			Level[i]->AssetCollision.RenderCollisionRect = true;
+			Level[i]->DefaultGameObjectCollision.RenderCollisionRect = true;
 		}
 
 		if (Level[i]->GameObjectID == PlayerStartLeftID)
 		{
-			PlayerStartObjects.push_back(Level[i]);
+			Engine->PlayerStartObjectLeft = Level[i];
+			Engine->PlayerStartObjectLeft->UpdateGameObjectState(false);
 		}
 		if (Level[i]->GameObjectID == PlayerStartRightID)
 		{
-			PlayerStartObjects.push_back(Level[i]);
+			Engine->PlayerStartObjectRight = Level[i];
+			Engine->PlayerStartObjectRight->UpdateGameObjectState(false);
 		}
 		if (Level[i]->GameObjectID == PlayerStartUpID)
 		{
-			PlayerStartObjects.push_back(Level[i]);
+			Engine->PlayerStartObjectUp = Level[i];
+			Engine->PlayerStartObjectUp->UpdateGameObjectState(false);
 		}
 		if (Level[i]->GameObjectID == PlayerStartDownID)
 		{
-			PlayerStartObjects.push_back(Level[i]);
+			Engine->PlayerStartObjectDown = Level[i];
+			Engine->PlayerStartObjectDown->UpdateGameObjectState(false);
 		}
 	}
 
-	// return the current level player start objects
-	return PlayerStartObjects;
+	for (int i = 0; i < Engine->InterfaceObjects_LevelActivatedCallback.size(); ++i)
+	{
+		Engine->InterfaceObjects_LevelActivatedCallback[i]->OnLevelActivated();
+	}
 }
 
 void InitWindow(
@@ -1728,7 +1718,7 @@ void SetGameObjectLocation(GameObject* GameObjectToSet, SVector NewLocation)
 
 	GameObjectToSet->Location = NewLocation;
 	GameObjectToSet->GameObjectBitmap.ComponentLocation = NewLocation;
-	GameObjectToSet->AssetCollision.ComponentLocation = NewLocation;
+	GameObjectToSet->DefaultGameObjectCollision.ComponentLocation = NewLocation;
 }
 
 void SetCharacterLocation(Character* CharacterToSet, SVector NewLocation)
@@ -1748,7 +1738,7 @@ void SetCharacterLocation(Character* CharacterToSet, SVector NewLocation)
 	// Teleport player to new location
 	CharacterToSet->Location = NewLocation;
 	CharacterToSet->GameObjectBitmap.ComponentLocation = NewLocation;
-	CharacterToSet->AssetCollision.ComponentLocation = NewLocation;
+	CharacterToSet->DefaultGameObjectCollision.ComponentLocation = NewLocation;
 	CharacterToSet->MoveComp.QuadCollisionParams.CollisionLeft.ComponentLocation = NewLocation;
 	CharacterToSet->MoveComp.QuadCollisionParams.CollisionRight.ComponentLocation = NewLocation;
 	CharacterToSet->MoveComp.QuadCollisionParams.CollisionUp.ComponentLocation = NewLocation;
@@ -1865,7 +1855,7 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 			NewLocation.Y += CharacterToAddMovement->MoveComp.Velocity;
 		}
 
-		// Snap character to ground if ground "down" collision detected
+		// Snap character to ground if "down" collision detected
 		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown &&
 			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp &&
 			!CharacterToAddMovement->MoveComp.IsRequestingJump())
@@ -1881,11 +1871,11 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 			NewLocation.Y = CharacterToAddMovement->MoveComp.RoofHitCollisionLocation + 5;
 		}
 		
+		// Prevent character from going into walls
 		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft)
 		{
 			NewLocation.X = CharacterToAddMovement->MoveComp.WallLeftHitCollisionLocation + 1;
 		}
-		
 		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight)
 		{
 			NewLocation.X = CharacterToAddMovement->MoveComp.WallRightHitCollisionLocation - 1;
@@ -1901,8 +1891,8 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 	CharacterToAddMovement->GameObjectBitmap.ComponentLocation.X = NewLocation.X;
 	CharacterToAddMovement->Location.Y = NewLocation.Y;
 	CharacterToAddMovement->GameObjectBitmap.ComponentLocation.Y = NewLocation.Y;
-	CharacterToAddMovement->AssetCollision.ComponentLocation.X = NewLocation.X;
-	CharacterToAddMovement->AssetCollision.ComponentLocation.Y = NewLocation.Y;
+	CharacterToAddMovement->DefaultGameObjectCollision.ComponentLocation.X = NewLocation.X;
+	CharacterToAddMovement->DefaultGameObjectCollision.ComponentLocation.Y = NewLocation.Y;
 
 	return NewLocation;
 }
