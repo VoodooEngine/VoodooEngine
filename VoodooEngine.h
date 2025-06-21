@@ -1,5 +1,11 @@
 #pragma once
 
+#include "CollisionComponent.h"
+#include "BitmapComponent.h"
+#include "Animation.h"
+#include "Renderer.h"
+#include "Interface.h"
+
 // VoodooEngine is a complete engine framework for making a 2D game
 // --------------------
 // Supported features:
@@ -12,29 +18,37 @@
 // - Text rendering using "DirectWrite API"
 // 
 // INPUT
-// - User input for keyboard (using "Win32 API") and gamepad (using "XInput API") 
+// - User input for keyboard using "Win32 API" 
+// - User input for gamepad using "XInput API" 
 // 
 // COLLISION
 // - Collision detection using "AABB" algorithm
 // 
+// Gravity
+// - Gravity with velocity
+// 
 // SOUND
 // - Playing one shot sounds/looping sounds using "XAudio2 API"
-// 
-// TIME/UPDATE 
+//
+// UPDATE 
 // - Update function with deltatime
+// 
+// TIMER
 // - Timer countdown with function pointer callback when finished
 // 
 // SPAWN/DELETE GAMEOBJECTS 
 // - Creating gameobjects dynamically during gameplay using base gameobject class
 // 
 // INTERFACES
-// - RenderCallback
-// - InputCallback
-// - GameStateCallback
-// - LevelActivatedCallback
+// - IRender
+// - IInput
+// - IGameState
+// - ILevelActivated
 // 
 // Tools
 // - Level editor 
+// 
+// Save/Load
 // - Saving/loading from files
 // --------------------
 
@@ -45,28 +59,26 @@
 // - "S" stands for "Struct" e.g. "SVector", "SColor"
 // - "E" stands for "enum" e.g. "EButtonType"
 // - "I" stands for interface e.g. IInteract, IDamage
-// - Every interface vector containers needs to have prefix "InterfaceObjects_" 
-// e.g. "InterfaceObjects_InputCallback", also add "Callback" as postfix for every interface vector container
-// - Every function name with prefix "Update" e.g. "UpdateAnimation", will be called every frame, 
+// 
+// Interface naming rules
+// - Every interface vector containers needs to have prefix "InterfaceObjects_" e.g. "InterfaceObjects_Input"
+// - Every interfaces inherited virtual functions, 
+// needs to have have prefix of "InterfaceEvent_" e.g. "InterfaceEvent_Input"
+// - Every function that sends input internally in the engine, 
+// needs to have prefix "SendInterface_" e.g. "SendInterface_Input"
+// 
+// Functions names with prefix "update" naming rule
+// - Every function name with prefix "Update" e.g. "UpdateAnimation", must be called every frame, 
 // NOTE never name anything with "Update" as prefix if you are not going to call it every frame 
 // --------------------
 
-#define VOODOOENGINE_API __declspec(dllexport)
-
-// Win32 API
-//---------------------
 // Exclude rarely used stuff from Windows headers
 #define WIN32_LEAN_AND_MEAN
 
+// Win32 API
 #include <Windows.h>
-#include <wincodec.h>
-#pragma comment(lib, "windowscodecs.lib")
-//---------------------
 
 // Direct2D API
-#include <d2d1.h>
-#include <d2d1_1.h>
-#include <d2d1_3.h>
 #pragma comment(lib, "d2d1.lib")
 
 // DirectWrite API
@@ -76,8 +88,6 @@
 // STL library
 #include <map>
 #include <string>
-#include <vector>
-#include <chrono>
 
 // Maximum number of allowed renderlayers
 #define RENDERLAYER_MAXNUM 10
@@ -95,7 +105,7 @@
 #define RENDERLAYER_9 9
 #define RENDERLAYER_10 10
 
-// Global collision tags used by the editor
+// Global collision tags used by the level editor
 #define TAG_LEVEL_EDITOR_GIZMO -1
 #define TAG_LEVEL_EDITOR_BUTTON_ID_NONE -2
 #define TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL -3
@@ -108,7 +118,46 @@
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_RENDERLAYERS -10
 #define TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_VIEWMODE -11
 
-// Window parameters information i.e. title name of application, window resolution, fullscreen etc.  
+// All keyboard keybind ID's
+#define INPUT_KEY_A 0x41
+#define INPUT_KEY_B 0x42
+#define INPUT_KEY_C 0x43
+#define INPUT_KEY_D 0x44
+#define INPUT_KEY_E 0x45
+#define INPUT_KEY_F 0x46
+#define INPUT_KEY_G 0x47
+#define INPUT_KEY_H 0x48
+#define INPUT_KEY_I 0x49
+#define INPUT_KEY_J 0x4A
+#define INPUT_KEY_K 0x4B
+#define INPUT_KEY_L 0x4C
+#define INPUT_KEY_M 0x4D
+#define INPUT_KEY_N 0x4E
+#define INPUT_KEY_O 0x4F
+#define INPUT_KEY_P 0x50
+#define INPUT_KEY_Q 0x51
+#define INPUT_KEY_R 0x52
+#define INPUT_KEY_S 0x53 
+#define INPUT_KEY_T 0x54
+#define INPUT_KEY_U 0x55
+#define INPUT_KEY_V 0x56
+#define INPUT_KEY_W 0x57
+#define INPUT_KEY_X 0x58
+#define INPUT_KEY_Y 0x59
+#define INPUT_KEY_Z 0x5A
+#define INPUT_KEY_ARROW_UP 0x26
+#define INPUT_KEY_ARROW_DOWN 0x28
+#define INPUT_KEY_ARROW_LEFT 0x25
+#define INPUT_KEY_ARROW_RIGHT 0x27
+#define INPUT_KEY_SPACE 0x20
+#define INPUT_KEY_ENTER 0x0D
+#define INPUT_KEY_TAB 0x09
+#define INPUT_KEY_SHIFT_LEFT 0xA0 
+#define INPUT_KEY_SHIFT_RIGHT 0xA1
+#define INPUT_KEY_CTRL_LEFT 0xA2
+#define INPUT_KEY_CTRL_RIGHT 0xA3
+
+// Window parameters information i.e. title name of application, screen size, fullscreen/border windowed etc.  
 struct SWindowParams
 {
 	HWND HWind = nullptr;
@@ -119,247 +168,26 @@ struct SWindowParams
 	bool Fullscreen = true;
 };
 
-enum ETextBrushRenderType
+enum ETextBrushColorType
 {
-	RenderWhiteBrush,
-	RenderBlackBrush
+	WhiteBrush,
+	BlackBrush
 };
 
 // Struct used to determine the UI text parameters
-//---------------------
-struct UITextParameters
+struct STextParameters
 {
 	const wchar_t* Text = L"";
-	ETextBrushRenderType TextRenderType = ETextBrushRenderType::RenderWhiteBrush;
+	ETextBrushColorType TextRenderType = ETextBrushColorType::WhiteBrush;
 	bool HideText = false;
 };
-//---------------------
 
 // Input
 //---------------------
-// Input interface with input type and if pressed/not pressed, input type ID is set by specific game
-class IInput
-{
-public:
-	virtual void OnInputBroadcast(int Input, bool Pressed){};
-};
 // Sends input broadcast to all listeners whenever an input is pressed, 
 // input type ID is set by specific game
-extern "C" VOODOOENGINE_API void SendBroadcastInput(
-	std::vector<IInput*> StoredCallbacks, int Input, bool Pressed);
-//---------------------
-
-// Generic event interface with no parameters 
-class IEventCallback
-{
-public:
-	virtual void OnEventBroadcast(){};
-};
-
-// Interface used for when certain objects wants to handle custom render logic
-class IRenderCallback
-{
-public:
-	virtual void OnRenderBroadcast(ID2D1HwndRenderTarget* Renderer){};
-};
-
-// GameState callback
-//---------------------
-// Sends optionial broadcast to inherited object listeners when game has started/ended
-class IGameStateCallback
-{
-public:
-	// Optional to setup for each game object
-	virtual void OnGameStart(){};
-	virtual void OnGameEnd(){};
-};
-//---------------------
-
-// Interface called whenever a level is activated
-class ILevelActivatedCallback
-{
-public:
-	virtual void OnLevelActivated(){};
-};
-
-// Utility
-//---------------------
-// 2D vector
-struct SVector
-{
-	float X = 0;
-	float Y = 0;
-};
-// Color (RGB)
-struct SColor
-{
-	// Default white color
-	float R = 1;
-	float G = 1;
-	float B = 1;
-};
-//---------------------
-
-// Base component that all movable components inherit, sets the component location
-//---------------------
-class TransformComponent
-{
-public:
-	SVector ComponentLocation;
-};
-//---------------------
-
-// Bitmap
-//---------------------
-// Bitmap parameters, all the info about the bitmap
-struct SBitmapParameters
-{
-	int RenderLayer = 0;
-	float Opacity = 1;
-	bool BitmapSetToNotRender = false;
-	SVector BitmapOffsetLeft;
-	SVector BitmapOffsetRight;
-	SVector BitmapSource;
-};
-// Bitmap component, contains bitmap pointer, bitmap params and transform component
-class BitmapComponent : public TransformComponent
-{
-public:
-	ID2D1Bitmap* Bitmap = nullptr;
-	SBitmapParameters BitmapParams = {};
-};
-
-// Setup a bitmap
-extern "C" VOODOOENGINE_API ID2D1Bitmap* SetupBitmap(
-	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer);
-
-// Setup bitmap component from a texture atlas (created bitmap)
-extern "C" VOODOOENGINE_API void SetupBitmapComponent(
-	BitmapComponent* BitmapComponentToSetup,
-	ID2D1Bitmap* TextureAtlas,
-	SVector TextureAtlasWidthHeight = {},
-	SVector TextureAtlasOffsetMultiplierWidthHeight = {},
-	bool UseEntireTextureAtlasAsBitmapSource = true);
-
-// Set the bitmap source location on the bitmap image, 
-// use multiplier if you want to offset bitmap source X axis
-extern "C" VOODOOENGINE_API void SetBitmapSourceLocationX(
-	BitmapComponent* BitmapToUpdate, int BitmapSourceWidth, int LocationOffsetMultiplier = 1);
-
-// Set the bitmap source location on the bitmap image, 
-// use multiplier if you want to offset bitmap source Y axis
-extern "C" VOODOOENGINE_API void SetBitmapSourceLocationY(
-	BitmapComponent* BitmapToUpdate, int BitmapSourceHeight, int LocationOffsetMultiplier = 1);
-//---------------------
-
-// Animation
-//---------------------
-// Contains animation info such as frame size/total frames and animation speed/state info 
-struct SAnimationParameters
-{
-	int AnimationState = 1;
-	float AnimationSpeed = 1;
-	int TotalFrames = 1;
-	int FrameWidth = 0;
-	int FrameHeight = 0;
-	int CurrentFrame = 1;
-	float AnimationTimer = 0;
-};
-// Set animation state e.g. idle, run
-extern "C" VOODOOENGINE_API void SetAnimationState(
-	SAnimationParameters& AnimationParams,
-	SVector& BitmapSource,
-	SVector& BitmapOffsetLeft,
-	SVector& BitmapOffsetRight);
-// Update animation
-extern "C" VOODOOENGINE_API void UpdateAnimation(
-	SAnimationParameters& AnimationParams,
-	SVector& BitmapSource,
-	SVector& BitmapOffsetLeft,
-	SVector& BitmapOffsetRight,
-	float DeltaTime);
-// Setup the first frame of animation, 
-// to use it, call this function inside "OnGameObjectSetupCompleted" virtual function in any gameobject 
-// (used for when an object is created before activation of update component, 
-// to make sure animation spritesheet bitmap gets framed with the first animation frame)
-extern "C" VOODOOENGINE_API void InitAnimationFirstFrame(
-	SAnimationParameters& AnimationParams, 
-	SVector& BitmapSource, SVector& BitmapOffsetLeft, SVector& BitmapOffsetRight);
-//---------------------
-
-// Object
-//---------------------
-// Base object class inherited by all objects in the engine that will be transformed 
-// and/or needs collision overlap events
-//---------------------
-class Object
-{
-public:
-	SVector Location;
-
-	virtual void OnBeginOverlap(int SenderCollisionTag, int TargetCollisionTag, Object* Target = nullptr){};
-	virtual void OnEndOverlap(int SenderCollisionTag, int TargetCollisionTag){};
-};
-extern "C" VOODOOENGINE_API void SetObjectLocation(Object* Object, SVector NewLocation);
-extern "C" VOODOOENGINE_API SVector GetObjectLocation(Object* Object);
-// This will set the location relative to the owner of the component 
-// e.g. a player is the owner object of the component, 
-// a gun is the component that will have its location set relative to where the player is, in local space
-// so if we set the player position in screen space to X=100, Y=200, and we set the gun position to be X=10, Y=20,
-// the gun position will end up being X=100 + X=10, Y=200 + Y=20
-extern "C" VOODOOENGINE_API void SetComponentRelativeLocation(
-	Object* ComponentOwner, TransformComponent* Component, SVector NewLocation);
-// Gets the result of the addition of the owner object (e.g. player) location, 
-// and the component (e.g. player's gun) location 
-extern "C" VOODOOENGINE_API SVector GetComponentRelativeLocation(
-	Object* ComponentOwner, TransformComponent* Component);
-//---------------------
-
-// Should collision block or overlap
-enum ECollisionType
-{
-	Collision_Block,
-	Collision_Overlap
-};
-
-// Collision
-//---------------------
-// Collision component class, 
-// contains all the needed collision parameters, 
-// inherited by all objects that needs collision detection
-class CollisionComponent : public TransformComponent
-{
-public:
-	ECollisionType CollisionType = ECollisionType::Collision_Block;
-	bool NoCollision = false;
-	bool IsOverlapped = false;
-	bool RenderCollisionRect = false;
-	bool DrawFilledRectangle = false;
-	float Opacity = 1;
-	int CollisionTag = -1;
-	std::vector<int> CollisionTagsToIgnore;
-	SColor CollisionRectColor;
-	SVector CollisionRect;
-	SVector CollisionRectOffset;
-	Object* Owner = nullptr;
-};
-extern "C" VOODOOENGINE_API bool IsCollisionDetected(
-	CollisionComponent* Sender, CollisionComponent* Target);
-extern "C" VOODOOENGINE_API void BroadcastCollision(
-	Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target);
-//---------------------
-
-// Rendering
-//---------------------
-void RenderBitmapByLayer(
-	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> StoredBitmaps, int RenderLayer);
-void RenderBitmaps(
-	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> BitmapsToRender, 
-	int MaxNumRenderLayers = 0);
-void RenderCollisionRectangles(
-	ID2D1HwndRenderTarget* Renderer, std::vector<CollisionComponent*> CollisionRectsToRender);
-void RenderCollisionRectangle(
-	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectToRender);
+extern "C" VOODOOENGINE_API void SendInterface_Input(
+	std::vector<IInput*> StoredInterfaceObjects, int Input, bool Pressed);
 //---------------------
 
 // Update component inherited by all objects that needs to update each frame
@@ -422,63 +250,6 @@ public:
 	SButtonParameters ButtonParams = {};
 	std::vector<BitmapComponent*> ButtonText;
 };
-
-// Game object 
-//---------------------
-// This class is used for all objects placed in levels, 
-// (if a game object needs custom stuff e.g. object with more than a single bitmap/collision etc. 
-// then this class would be a parent class to that object)
-class GameObject : public Object, public IGameStateCallback
-{
-public:
-	BitmapComponent GameObjectBitmap;
-	SVector GameObjectDimensions = { 0, 0 };
-	bool GameObjectBitmapHiddenInGame = false;
-
-	// Never account for negative value as game object ID as that is the default value
-	int GameObjectID = -1;
-
-	// Optional, can be set to not be created
-	CollisionComponent DefaultGameObjectCollision;
-	bool CreateDefaultGameObjectCollisionInGame = false;
-
-	// Optional custom constructor, called after everything has been initialized for the game object
-	virtual void OnGameObjectCreated(SVector SpawnLocation){};
-
-	// Optional custom deconstructor, called right before an object is set to be deleted, 
-	// can be used to delete additional stuff created outside of this class in their own class
-	// e.g. a player class where additional bitmaps/collision has been created inside player class 
-	// that needs to be deleted
-	virtual void OnGameObjectDeleted(){};
-
-	// Enable/disable bitmap rendering/default object collision
-	virtual void UpdateGameObjectState(bool Enable = false)
-	{
-		if (Enable)
-		{
-			if (!GameObjectBitmapHiddenInGame)
-			{
-				GameObjectBitmap.BitmapParams.BitmapSetToNotRender = false;
-			}
-			
-			// Set no collision as default, and if set to have collision enable it
-			DefaultGameObjectCollision.NoCollision = true;
-			if (CreateDefaultGameObjectCollisionInGame)
-			{
-				DefaultGameObjectCollision.NoCollision = false;
-			}
-		}
-		else if (!Enable)
-		{
-			GameObjectBitmap.BitmapParams.BitmapSetToNotRender = true;
-			DefaultGameObjectCollision.NoCollision = true;
-		}
-	}
-
-	virtual void OnGameStart(){};
-	virtual void OnGameEnd(){};
-};
-//---------------------
 
 // Asset related
 //---------------------
@@ -563,10 +334,10 @@ public:
 	char FileName[100];
 	void(*AssetLoadFunctionPointer)(int, SVector, std::vector<GameObject*>&) = nullptr;
 
-	std::vector<IRenderCallback*> InterfaceObjects_Render;
-	std::vector<IInput*> InterfaceObjects_InputCallback;
-	std::vector<IGameStateCallback*> InterfaceObjects_GameStateCallback;
-	std::vector<ILevelActivatedCallback*> InterfaceObjects_LevelActivatedCallback;
+	std::vector<IRender*> InterfaceObjects_Render;
+	std::vector<IInput*> InterfaceObjects_Input;
+	std::vector<IGameState*> InterfaceObjects_GameState;
+	std::vector<ILevelActivated*> InterfaceObjects_LevelActivated;
 
 	// Optional level background that can be used in game levels
 	// (Note this bitmap will always be set to render first in the painter's algorithm, 
@@ -637,12 +408,13 @@ public:
 	SColor ColorYellow = { 255, 255, 0 };
 
 	// Variables used by direct write to display UI text, 
-	// they will be created and be available for the remainder of the program
+	// the brushes will be created on init and be available for the remainder of the program 
+	// to any text instances
 	IDWriteTextFormat* TextFormat = nullptr;
 	ID2D1SolidColorBrush* BlackBrush = nullptr;
 	ID2D1SolidColorBrush* WhiteBrush = nullptr;
 	// Used to store all UI text for render layers using directwrite
-	std::map<int, UITextParameters> StoredLevelEditorRenderLayers;
+	std::map<int, STextParameters> StoredLevelEditorRenderLayers;
 
 	// Clear all debug text from screen
 	static void ClearScreenPrint(VoodooEngine* Engine)
@@ -669,11 +441,11 @@ public:
 		Engine->ScreenPrintTextColumnsPrinted = 0;
 	}
 
-	static void CallMouseInputCallback(int MouseButton, bool Pressed)
+	static void SendInterface_MouseInput(int MouseButton, bool Pressed)
 	{
-		for (int i = 0; i < VoodooEngine::Engine->InterfaceObjects_InputCallback.size(); ++i)
+		for (int i = 0; i < VoodooEngine::Engine->InterfaceObjects_Input.size(); ++i)
 		{
-			VoodooEngine::Engine->InterfaceObjects_InputCallback[i]->OnInputBroadcast(MouseButton, Pressed);
+			VoodooEngine::Engine->InterfaceObjects_Input[i]->InterfaceEvent_Input(MouseButton, Pressed);
 		}
 	}
 
@@ -684,20 +456,20 @@ public:
 			// Primary mouse button
 		case WM_LBUTTONDOWN:
 			Engine->Mouse.PrimaryMousePressed = true;
-			CallMouseInputCallback(WM_LBUTTONDOWN, true);
+			SendInterface_MouseInput(WM_LBUTTONDOWN, true);
 			break;
 		case WM_LBUTTONUP:
 			Engine->Mouse.PrimaryMousePressed = false;
-			CallMouseInputCallback(WM_LBUTTONUP, false);
+			SendInterface_MouseInput(WM_LBUTTONUP, false);
 			break;
 			// Secondary mouse button
 		case WM_RBUTTONDOWN:
 			Engine->Mouse.SecondaryMousePressed = true;
-			CallMouseInputCallback(WM_RBUTTONDOWN, true);
+			SendInterface_MouseInput(WM_RBUTTONDOWN, true);
 			break;
 		case WM_RBUTTONUP:
 			Engine->Mouse.SecondaryMousePressed = false;
-			CallMouseInputCallback(WM_RBUTTONUP, false);
+			SendInterface_MouseInput(WM_RBUTTONUP, false);
 			break;
 		}
 	};
@@ -707,10 +479,10 @@ public:
 		switch (Message)
 		{
 		case WM_KEYDOWN:
-			SendBroadcastInput(VoodooEngine::Engine->InterfaceObjects_InputCallback, WParam, true);
+			SendInterface_Input(VoodooEngine::Engine->InterfaceObjects_Input, WParam, true);
 			break;
 		case WM_KEYUP:
-			SendBroadcastInput(VoodooEngine::Engine->InterfaceObjects_InputCallback, WParam, false);
+			SendInterface_Input(VoodooEngine::Engine->InterfaceObjects_Input, WParam, false);
 			break;
 		default:
 			break;
@@ -786,7 +558,6 @@ public:
 		GameRunning = true;
 		for (int i = 0; i < StoredGameObjects.size(); ++i)
 		{
-			StoredGameObjects[i]->OnGameStart();
 			// If no default asset collision is assigned, 
 			// then disable collision when game starts
 			if (!StoredGameObjects[i]->CreateDefaultGameObjectCollisionInGame)
@@ -794,9 +565,9 @@ public:
 				StoredGameObjects[i]->DefaultGameObjectCollision.NoCollision = true;
 			}
 		}
-		for (int i = 0; i < InterfaceObjects_GameStateCallback.size(); ++i)
+		for (int i = 0; i < InterfaceObjects_GameState.size(); ++i)
 		{
-			InterfaceObjects_GameStateCallback[i]->OnGameStart();
+			InterfaceObjects_GameState[i]->InterfaceEvent_GameStart();
 		}
 
 		SetPlayerStartObjectsVisibility(false);
@@ -806,7 +577,6 @@ public:
 		GameRunning = false;
 		for (int i = 0; i < StoredGameObjects.size(); ++i)
 		{
-			StoredGameObjects[i]->OnGameEnd();
 			// If no default asset collision is assigned, 
 			// then enable collision when game ends 
 			// (so the asset is clickable in the editor during level edit)
@@ -815,9 +585,9 @@ public:
 				StoredGameObjects[i]->DefaultGameObjectCollision.NoCollision = false;
 			}
 		}
-		for (int i = 0; i < InterfaceObjects_GameStateCallback.size(); ++i)
+		for (int i = 0; i < InterfaceObjects_GameState.size(); ++i)
 		{
-			InterfaceObjects_GameStateCallback[i]->OnGameEnd();
+			InterfaceObjects_GameState[i]->InterfaceEvent_GameEnd();
 		}
 
 		SetPlayerStartObjectsVisibility(true);
@@ -1227,24 +997,8 @@ struct SEditorAssetPathList
 	//-----------------
 };
 
-// PLEASE NOTE! ALL THESE REMOVE COMPONENT FUNCTIONS ARE DEPRECIATED 
-// AND REPLACED WITH "RemoveComponent" template function residing in engine class
-// DELETE THESE FUNCTIONS LATER WHEN YOU HAVE CONFIRMED THAT THE TEMPLATE FUNCTION WORKS
-//---------------------
-// Remove bitmap component from "StoredBitmapComponents" 
-extern "C" VOODOOENGINE_API void RemoveBitmapComponent(BitmapComponent* Component, VoodooEngine* Engine);
-// Remove collision component from "StoredCollisionComponents"
-extern "C" VOODOOENGINE_API void RemoveCollisionComponent(CollisionComponent* Component, VoodooEngine* Engine);
-// Remove update component from "StoredUpdateComponents"
-extern "C" VOODOOENGINE_API void RemoveUpdateComponent(UpdateComponent* Component, VoodooEngine* Engine);
-// Remove input callback component from "InterfaceObjects_InputCallback"
-extern "C" VOODOOENGINE_API void RemoveInputCallback(IInput* Component, VoodooEngine* Engine);
-//----------------------------------------------
-
 // Create the text format to be used by all direct write IU text for the remainder of the program
 extern "C" VOODOOENGINE_API void CreateUITextFormat(VoodooEngine* Engine);
-// Render UI text using direct write
-extern "C" VOODOOENGINE_API void RenderUITextsRenderLayer(VoodooEngine* Engine);
 // Print debug text to screen
 extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
 //---------------------
@@ -1290,7 +1044,7 @@ public:
 	CollisionComponent GizmoCollision;
 
 	// Will send event whenever a game object is moved by the gizmo
-	std::vector<IEventCallback*> MoveGameObjectEventListeners;
+	std::vector<IEventGeneric*> MoveGameObjectEventListeners;
 
 	GameObject* SelectedGameObject = nullptr;
 	GameObject* CurrentClickedGameObject = nullptr;
@@ -1325,7 +1079,7 @@ public:
 		Engine->StoredEditorUpdateComponents.push_back(this);
 		Engine->StoredEditorBitmapComponents.push_back(&GizmoBitmap);
 		Engine->StoredEditorCollisionComponents.push_back(&GizmoCollision);
-		Engine->InterfaceObjects_InputCallback.push_back(this);
+		Engine->InterfaceObjects_Input.push_back(this);
 	};
 
 	void InitGizmoLocation(SVector NewLocation)
@@ -1393,7 +1147,7 @@ public:
 
 			for (int i = 0; i < MoveGameObjectEventListeners.size(); ++i)
 			{
-				MoveGameObjectEventListeners[i]->OnEventBroadcast();
+				MoveGameObjectEventListeners[i]->InterfaceEvent_Generic(nullptr);
 			}
 		}
 	};
@@ -1620,7 +1374,7 @@ public:
 		SelectedGameObject = nullptr;
 	};
 
-	void OnInputBroadcast(int Input, bool Pressed)
+	void InterfaceEvent_Input(int Input, bool Pressed)
 	{
 		if (Engine->GameRunning)
 		{
@@ -1697,7 +1451,7 @@ extern "C" VOODOOENGINE_API void LoadLevelFromFile(
 
 // Level Editor
 //---------------------
-class LevelEditor : public Object, public UpdateComponent, public IInput, public IEventCallback
+class LevelEditor : public Object, public UpdateComponent, public IInput, public IEventGeneric
 {
 
 // Button locations
@@ -1754,7 +1508,7 @@ public:
 		Engine->StoredEditorUpdateComponents.push_back(this);
 
 		// Add input callback for level editor
-		Engine->InterfaceObjects_InputCallback.push_back(this);
+		Engine->InterfaceObjects_Input.push_back(this);
 
 		// Create level editor UI
 		LevelEditorUITop.Bitmap = 
@@ -1820,7 +1574,7 @@ public:
 	EMenuType CurrentMenuTypeActivated = EMenuType::None;
 
 	// This is called whenever a game object is moved by the gizmo
-	void OnEventBroadcast()
+	void InterfaceEvent_Generic()
 	{
 		if (LevelEditorVisible)
 		{
@@ -2124,24 +1878,24 @@ public:
 			RenderLayerVisibilityEyeIconButtons.at(
 			HoveredButtonID)->ButtonBitmap.Bitmap->GetSize().width / 2;
 		auto Iterator = Engine->StoredLevelEditorRenderLayers.find(HoveredButtonID);
-		if (Iterator->second.TextRenderType == ETextBrushRenderType::RenderBlackBrush)
+		if (Iterator->second.TextRenderType == ETextBrushColorType::BlackBrush)
 		{
 			// Show "on" eye icon bitmap
 			SetBitmapSourceLocationX(
 				&RenderLayerVisibilityEyeIconButtons.at(
 				HoveredButtonID)->ButtonBitmap, BitmapWidth, 1);
 
-			Iterator->second.TextRenderType = ETextBrushRenderType::RenderWhiteBrush;
+			Iterator->second.TextRenderType = ETextBrushColorType::WhiteBrush;
 			SetGameObjectsVisibilityBasedOnRenderLayer(true, HoveredButtonID);
 		}
-		else if (Iterator->second.TextRenderType == ETextBrushRenderType::RenderWhiteBrush)
+		else if (Iterator->second.TextRenderType == ETextBrushColorType::WhiteBrush)
 		{
 			// Show "off" eye icon bitmap
 			SetBitmapSourceLocationX(
 				&RenderLayerVisibilityEyeIconButtons.at(
 				HoveredButtonID)->ButtonBitmap, BitmapWidth, 2);
 
-			Iterator->second.TextRenderType = ETextBrushRenderType::RenderBlackBrush;
+			Iterator->second.TextRenderType = ETextBrushColorType::BlackBrush;
 			SetGameObjectsVisibilityBasedOnRenderLayer(false, HoveredButtonID);
 		}
 	};
@@ -2296,7 +2050,7 @@ public:
 			break;
 		}
 	};
-	void OnInputBroadcast(int Input, bool Pressed)
+	void InterfaceEvent_Input(int Input, bool Pressed)
 	{
 		if (Input == VK_TAB)
 		{
@@ -2569,7 +2323,7 @@ extern "C" VOODOOENGINE_API void ActivateLevel(
 extern "C" VOODOOENGINE_API void SetFPSLimit(VoodooEngine* Engine, float FPSLimit);
 
 // Setup the application window and renderer
-extern "C" VOODOOENGINE_API void InitWindow(
+extern "C" VOODOOENGINE_API void InitWindowAndRenderer(
 	VoodooEngine* Engine,
 	LPCWSTR WindowTitle,
 	WNDPROC WindowsProcedure,
@@ -2578,7 +2332,7 @@ extern "C" VOODOOENGINE_API void InitWindow(
 	bool WindowFullScreen = true);
 
 // Setup the engine 
-extern "C" VOODOOENGINE_API void InitEngine(VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void InitEngine(VoodooEngine* Engine, SRenderLayerNames RenderLayerNames);
 // Run the engine game loop
 extern "C" VOODOOENGINE_API void RunEngine(VoodooEngine* Engine);
 
@@ -2653,7 +2407,7 @@ extern "C" VOODOOENGINE_API SVector AddMovementInput(Character* CharacterToAddMo
 extern "C" VOODOOENGINE_API SVector AddMovementAI(AIComponent& AIComp);
 //---------------------
 
-class Trigger : public GameObject, public UpdateComponent
+class Trigger : public GameObject, public UpdateComponent, public IGameState
 {
 public:	
 	std::vector<CollisionComponent*> CollisionTargets;
@@ -2661,21 +2415,24 @@ public:
 	void OnGameObjectCreated(SVector SpawnLocation)
 	{
 		VoodooEngine::Engine->StoredUpdateComponents.push_back(this);
+		VoodooEngine::Engine->InterfaceObjects_GameState.push_back(this);
 	}
 	void OnGameObjectDeleted()
 	{
 		VoodooEngine::Engine->RemoveComponent(
 			(UpdateComponent*)this, &VoodooEngine::Engine->StoredUpdateComponents);
+		VoodooEngine::Engine->RemoveComponent(
+			(IGameState*)this, &VoodooEngine::Engine->InterfaceObjects_GameState);
 	}
 
-	void OnGameStart()
+	void InterfaceEvent_GameStart()
 	{
 		if (!VoodooEngine::Engine->DebugMode)
 		{
 			GameObjectBitmap.BitmapParams.BitmapSetToNotRender = true;
 		}
 	}
-	void OnGameEnd()
+	void InterfaceEvent_GameEnd()
 	{
 		GameObjectBitmap.BitmapParams.BitmapSetToNotRender = false;
 	}
@@ -2749,8 +2506,6 @@ public:
 		Trigger::OnBeginOverlap(SenderCollisionTag, TargetCollisionTag, Target);
 
 		OnLoadLevelTriggerOverlap(LoadLevelTriggerType);
-
-		ScreenPrint("player_overlap_load_level_trigger", VoodooEngine::Engine);
 	}
 
 private:

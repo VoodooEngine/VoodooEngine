@@ -92,25 +92,6 @@ static void SetCustomAppIcon(VoodooEngine* Engine)
 			Engine->Window.HWind, GW_OWNER), WM_SETICON, ICON_BIG, (LPARAM)CustomAppIcon);
 	}
 }
-ID2D1HwndRenderTarget* SetupRenderer(ID2D1HwndRenderTarget* Renderer, HWND HWind)
-{
-	ID2D1Factory* Factory = nullptr;
-	HRESULT Result = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &Factory);
-
-	// Get user screen size
-	RECT WinRect;
-	GetClientRect(HWind, &WinRect);
-
-	Result = Factory->CreateHwndRenderTarget(
-		D2D1::RenderTargetProperties(),
-		D2D1::HwndRenderTargetProperties(
-			HWind, D2D1::SizeU(WinRect.right, WinRect.bottom)),
-		&Renderer);
-
-	Factory->Release();
-
-	return Renderer;
-}
 
 // Setup default brushes used by various objects that needs a brush 
 // (so we don't create new brushes for every object)
@@ -150,11 +131,11 @@ void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
 	Engine->FrameTargetTime = (1000 / Engine->FPS);
 }
 
-void SendBroadcastInput(std::vector<IInput*> StoredCallbacks, int Input, bool Pressed)
+void SendInterface_Input(std::vector<IInput*> StoredInterfaceObjects, int Input, bool Pressed)
 {
-	for (int i = 0; i < StoredCallbacks.size(); ++i)
+	for (int i = 0; i < StoredInterfaceObjects.size(); ++i)
 	{
-		StoredCallbacks[i]->OnInputBroadcast(Input, Pressed);
+		StoredInterfaceObjects[i]->InterfaceEvent_Input(Input, Pressed);
 	}
 }
 
@@ -173,34 +154,6 @@ bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck)
 	return false;
 }
 
-void RemoveBitmapComponent(BitmapComponent* Component, VoodooEngine* Engine)
-{
-	Engine->StoredBitmapComponents.erase(std::remove(
-		Engine->StoredBitmapComponents.begin(),
-		Engine->StoredBitmapComponents.end(), Component));
-}
-
-void RemoveCollisionComponent(CollisionComponent* Component, VoodooEngine* Engine)
-{
-	Engine->StoredCollisionComponents.erase(std::remove(
-		Engine->StoredCollisionComponents.begin(),
-		Engine->StoredCollisionComponents.end(), Component));
-}
-
-void RemoveUpdateComponent(UpdateComponent* Component, VoodooEngine* Engine)
-{
-	Engine->StoredUpdateComponents.erase(std::remove(
-		Engine->StoredUpdateComponents.begin(),
-		Engine->StoredUpdateComponents.end(), Component));
-}
-
-void RemoveInputCallback(IInput* Component, VoodooEngine* Engine)
-{
-	Engine->InterfaceObjects_InputCallback.erase(std::remove(
-		Engine->InterfaceObjects_InputCallback.begin(),
-		Engine->InterfaceObjects_InputCallback.end(), Component));
-}
-
 void ShiftBitmapToLetter(int LetterID, BitmapComponent* LetterBitmap, VoodooEngine* Engine)
 {
 	LetterBitmap->BitmapParams.BitmapSource.X = Engine->LetterSpace * LetterID;
@@ -212,7 +165,6 @@ void ShiftBitmapToLetter(int LetterID, BitmapComponent* LetterBitmap, VoodooEngi
 void AssignLetterShiftByID(std::string Letter, BitmapComponent* LetterBitmap, VoodooEngine* Engine)
 {
 	// The numbers represent a location in the font bitmap
-
 	if (Letter == "a")
 		ShiftBitmapToLetter(1, LetterBitmap, Engine);
 	if (Letter == "b")
@@ -335,42 +287,6 @@ void CreateText(VoodooEngine* Engine, Button* ButtonReference, SButtonParameters
 			ButtonReference->ButtonText.push_back(NewLetter);
 			Engine->StoredButtonTexts.push_back(NewLetter);
 		}
-	}
-}
-
-void RenderUITextsRenderLayer(VoodooEngine* Engine)
-{
-	D2D1_RECT_F OriginTextLocation = D2D1::RectF(1680.f, 110.f, 2000.f, 110.f);
-	float OffsetLocationY = 50;
-	for (int i = 0; i < Engine->StoredLevelEditorRenderLayers.size(); ++i)
-	{
-		auto Iterator = Engine->StoredLevelEditorRenderLayers.find(i);
-		if (Iterator->second.HideText)
-		{
-			return;
-		}
-
-		if (Iterator->second.TextRenderType == ETextBrushRenderType::RenderBlackBrush)
-		{
-			Engine->Renderer->DrawText(
-				Iterator->second.Text,
-				wcslen(Iterator->second.Text),
-				Engine->TextFormat,
-				OriginTextLocation,
-				Engine->BlackBrush);
-		}
-		else if (Iterator->second.TextRenderType == ETextBrushRenderType::RenderWhiteBrush)
-		{
-			Engine->Renderer->DrawText(
-				Iterator->second.Text,
-				wcslen(Iterator->second.Text),
-				Engine->TextFormat,
-				OriginTextLocation,
-				Engine->WhiteBrush);
-		}
-
-		OriginTextLocation.top += OffsetLocationY;
-		OriginTextLocation.bottom += OffsetLocationY;
 	}
 }
 
@@ -745,321 +661,6 @@ void Update(VoodooEngine* Engine)
 	}
 }
 
-ID2D1Bitmap* BitmapCreationSetup(
-	ID2D1Bitmap* BitmapToCreate, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer)
-{
-	// If bitmap is already created, 
-	// then release previous bitmap to avoid memory leak before making it nullptr
-	if (BitmapToCreate)
-	{
-		BitmapToCreate->Release();
-		BitmapToCreate = nullptr;
-	}
-
-	HRESULT Result;
-
-	// Create Wic factory
-	IWICImagingFactory* WicFactory = nullptr;
-	Result = CoCreateInstance(
-		CLSID_WICImagingFactory,
-		nullptr,
-		CLSCTX_INPROC_SERVER,
-		IID_PPV_ARGS(&WicFactory));
-
-	// Create decoder
-	IWICBitmapDecoder* Decoder = nullptr;
-	Result = WicFactory->CreateDecoderFromFilename(
-		FileName,
-		nullptr,
-		GENERIC_READ,
-		WICDecodeMetadataCacheOnDemand,
-		&Decoder);
-
-	// Failed to find file 
-	if (!Decoder)
-	{ 
-		return nullptr;
-	}
-
-	// Create decoder frame
-	IWICBitmapFrameDecode* DecoderFrame = nullptr;
-	Result = Decoder->GetFrame(0, &DecoderFrame);
-
-	// Create a converter from WIC bitmap to Direct2D bitmap
-	IWICFormatConverter* WicConverter = nullptr;
-	Result = WicFactory->CreateFormatConverter(&WicConverter);
-
-	// Setup the WIC bitmap converter
-	Result = WicConverter->Initialize(
-		DecoderFrame,
-		GUID_WICPixelFormat32bppPBGRA,
-		WICBitmapDitherTypeNone,
-		nullptr,
-		0,
-		WICBitmapPaletteTypeCustom);
-
-	Renderer->CreateBitmapFromWicBitmap(
-		WicConverter, nullptr, &BitmapToCreate);
-
-	if (WicFactory)
-	{ 
-		WicFactory->Release();
-	}
-	if (Decoder)
-	{ 
-		Decoder->Release();
-	}
-	if (DecoderFrame)
-	{ 
-		DecoderFrame->Release();
-	}
-	if (WicConverter)
-	{
-		WicConverter->Release();
-	}
-
-	return BitmapToCreate;
-}
-
-ID2D1Bitmap* SetupBitmap(
-	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget * Renderer)
-{
-	 return BitmapCreationSetup(BitmapToSetup, FileName, Renderer);
-}
-
-void SetupBitmapComponent(
-	BitmapComponent* BitmapComponentToSetup,
-	ID2D1Bitmap* TextureAtlas,
-	SVector TextureAtlasWidthHeight,
-	SVector TextureAtlasOffsetMultiplierWidthHeight,
-	bool UseEntireTextureAtlasAsBitmapSource)
-{	
-	BitmapComponentToSetup->Bitmap = TextureAtlas;
-	
-	if (UseEntireTextureAtlasAsBitmapSource)
-	{
-		// Set the bitmap source the same size as the entire texture altas
-		// (this is used for when there is a single texture instead of multiple "slots" in the texture atlas)
-		BitmapComponentToSetup->BitmapParams.BitmapSource.X = 
-			TextureAtlas->GetSize().width;
-		BitmapComponentToSetup->BitmapParams.BitmapSource.Y =
-			TextureAtlas->GetSize().height;
-
-		// Since computer graphics start from left to right
-		// "BitmapOffsetLeft" is not changed since default is at "0"
-		BitmapComponentToSetup->BitmapParams.BitmapOffsetRight.X =
-			BitmapComponentToSetup->BitmapParams.BitmapSource.X;
-		BitmapComponentToSetup->BitmapParams.BitmapOffsetRight.Y =
-			BitmapComponentToSetup->BitmapParams.BitmapSource.Y;
-	}
-	else
-	{
-		// Set the bitmap source the same size as the desired texture atlas "slot" width and height
-		BitmapComponentToSetup->BitmapParams.BitmapSource.X = TextureAtlasWidthHeight.X;
-		BitmapComponentToSetup->BitmapParams.BitmapSource.Y = TextureAtlasWidthHeight.Y;
-
-		// Offset the bitmap source to the desired location of the texture atlas
-		SetBitmapSourceLocationX(
-			BitmapComponentToSetup, 
-			TextureAtlasWidthHeight.X, 
-			TextureAtlasOffsetMultiplierWidthHeight.X);
-		SetBitmapSourceLocationY(
-			BitmapComponentToSetup,
-			TextureAtlasWidthHeight.Y,
-			TextureAtlasOffsetMultiplierWidthHeight.Y);
-	}
-}
-
-void SetBitmapSourceLocationX(
-	BitmapComponent* BitmapToUpdate, int BitmapSourceWidth, int BitmapOffsetMultiplier)
-{
-	BitmapToUpdate->BitmapParams.BitmapSource.X = BitmapSourceWidth * BitmapOffsetMultiplier;
-
-	BitmapToUpdate->BitmapParams.BitmapOffsetLeft.X = 
-		BitmapToUpdate->BitmapParams.BitmapSource.X - BitmapSourceWidth;
-
-	BitmapToUpdate->BitmapParams.BitmapOffsetRight.X = BitmapSourceWidth;
-}
-
-void SetBitmapSourceLocationY(
-	BitmapComponent* BitmapToUpdate, int BitmapSourceHeight, int BitmapOffsetMultiplier)
-{
-	BitmapToUpdate->BitmapParams.BitmapSource.Y = BitmapSourceHeight * BitmapOffsetMultiplier;
-
-	BitmapToUpdate->BitmapParams.BitmapOffsetLeft.Y =
-		BitmapToUpdate->BitmapParams.BitmapSource.Y - BitmapSourceHeight;
-
-	BitmapToUpdate->BitmapParams.BitmapOffsetRight.Y = BitmapSourceHeight;
-}
-
-void SetAnimationState(SAnimationParameters &AnimationParams,
-	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight)
-{
-	// Goes from top to bottom in a spritesheet depending on desired animation state
-	// e.g. idle is at top row of spritesheet since that "AnimationState" number is 0, 
-	// walk is a row below since "AnimationState" number is 1 etc. 
-	BitmapSource.Y = AnimationParams.FrameHeight * AnimationParams.AnimationState;
-	BitmapOffsetLeft.Y = BitmapSource.Y - AnimationParams.FrameHeight;
-	BitmapOffsetRight.Y = AnimationParams.FrameHeight;
-}
-
-void UpdateAnimation(SAnimationParameters &AnimationParams,
-	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight, float DeltaTime)
-{
-	SetAnimationState(AnimationParams, BitmapSource, BitmapOffsetLeft, BitmapOffsetRight);
-
-	// Default to first frame
-	int CurrentFrameLocation = AnimationParams.FrameWidth;
-
-	// Controls speed of animation
-	AnimationParams.AnimationTimer += AnimationParams.AnimationSpeed * DeltaTime;
-
-	// Reset animation back to first frame when last frame is reached
-	if (AnimationParams.AnimationTimer > AnimationParams.TotalFrames)
-	{
-		AnimationParams.CurrentFrame = 1;
-		AnimationParams.AnimationTimer = 0;
-	}
-
-	// Only update to next animation frame if current frame is less than the total amount of frames
-	// ("+1" is there to make sure the last frame is taken into account)
-	if (AnimationParams.CurrentFrame < (AnimationParams.TotalFrames + 1))
-	{
-		// Update the spritesheet to the current frame 
-		// (moves from left to right in a spritesheet)
-		CurrentFrameLocation = AnimationParams.FrameWidth * AnimationParams.CurrentFrame;
-		BitmapSource.X = CurrentFrameLocation;
-		BitmapOffsetLeft.X = BitmapSource.X - AnimationParams.FrameWidth;
-		BitmapOffsetRight.X = AnimationParams.FrameWidth;
-
-		// Only move to next frame once animation timer has catched up
-		if (AnimationParams.AnimationTimer > AnimationParams.CurrentFrame)
-		{
-			AnimationParams.CurrentFrame += 1;
-		}
-	}
-}
-
-void InitAnimationFirstFrame(SAnimationParameters &AnimationParams, 
-	SVector &BitmapSource, SVector &BitmapOffsetLeft, SVector &BitmapOffsetRight)
-{
-	UpdateAnimation(AnimationParams, BitmapSource, BitmapOffsetLeft, BitmapOffsetRight, 1);
-}
-
-void RenderBitmap(ID2D1HwndRenderTarget* Renderer, BitmapComponent* BitmapToRender)
-{
-	if (!BitmapToRender)
-	{
-		return;
-	}
-
-	D2D_RECT_F DestRect =
-		D2D1::RectF(
-		BitmapToRender->ComponentLocation.X,
-		BitmapToRender->ComponentLocation.Y,
-		BitmapToRender->ComponentLocation.X + BitmapToRender->BitmapParams.BitmapOffsetRight.X,
-		BitmapToRender->ComponentLocation.Y + BitmapToRender->BitmapParams.BitmapOffsetRight.Y);
-
-	D2D_RECT_F SourceRect =
-		D2D1::RectF(
-		BitmapToRender->BitmapParams.BitmapOffsetLeft.X,
-		BitmapToRender->BitmapParams.BitmapOffsetLeft.Y,
-		BitmapToRender->BitmapParams.BitmapSource.X,
-		BitmapToRender->BitmapParams.BitmapSource.Y);
-
-	Renderer->DrawBitmap(
-		BitmapToRender->Bitmap,
-		DestRect,
-		BitmapToRender->BitmapParams.Opacity,
-		D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-		SourceRect);
-}
-
-void RenderBitmapByLayer(ID2D1HwndRenderTarget* Renderer, 
-	std::vector<BitmapComponent*> StoredBitmaps, int RenderLayer)
-{
-	for (int i = 0; i < StoredBitmaps.size(); ++i)
-	{
-		// Go to next if bitmap is not valid
-		if (!StoredBitmaps[i]->Bitmap)
-			continue;
-
-		// Go to next bitmap if set to be hidden in game
-		if (StoredBitmaps[i]->BitmapParams.BitmapSetToNotRender)
-			continue;
-
-		// Go to next if bitmap is not assigned as current render layer
-		if (StoredBitmaps[i]->BitmapParams.RenderLayer != RenderLayer)
-			continue;
-
-		RenderBitmap(Renderer, StoredBitmaps[i]);
-	}
-}
-
-void RenderBitmaps(ID2D1HwndRenderTarget* Renderer,
-	std::vector<BitmapComponent*> BitmapsToRender, int MaxNumRenderLayers)
-{
-	// "+1" is there to account for the last render layer 
-	for (int i = 0; i < (MaxNumRenderLayers + 1); ++i)
-	{
-		RenderBitmapByLayer(Renderer, BitmapsToRender, i);
-	}
-}
-
-void RenderCustomMouseCursor(ID2D1HwndRenderTarget* Renderer, VoodooEngine* Engine)
-{
-	// Render mouse collider as fallback if no custom cursor image file is found or in debug mode
-	if (Engine->Mouse.MouseBitmap.Bitmap == nullptr || 
-		Engine->DebugMode)
-	{
-		// Skip rendereing altogether if set to not render
-		if (!Engine->Mouse.MouseCollider.RenderCollisionRect)
-		{
-			return;
-		}
-
-		D2D1_RECT_F Rect = D2D1::RectF(
-			Engine->Mouse.MouseCollider.ComponentLocation.X,
-			Engine->Mouse.MouseCollider.ComponentLocation.Y,
-			Engine->Mouse.MouseCollider.ComponentLocation.X +
-			Engine->Mouse.MouseCollider.CollisionRect.X,
-			Engine->Mouse.MouseCollider.ComponentLocation.Y +
-			Engine->Mouse.MouseCollider.CollisionRect.Y);
-
-		Renderer->DrawRectangle(Rect, Engine->WhiteBrush);
-	}
-	
-	if (Engine->Mouse.MouseBitmap.Bitmap == nullptr ||
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSetToNotRender)
-	{
-		return;
-	}
-
-	D2D_RECT_F DestRect =
-		D2D1::RectF(
-		Engine->Mouse.MouseBitmap.ComponentLocation.X,
-		Engine->Mouse.MouseBitmap.ComponentLocation.Y,
-		Engine->Mouse.MouseBitmap.ComponentLocation.X + 
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapOffsetRight.X,
-		Engine->Mouse.MouseBitmap.ComponentLocation.Y + 
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapOffsetRight.Y);
-
-	D2D_RECT_F SourceRect =
-		D2D1::RectF(
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapOffsetLeft.X,
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapOffsetLeft.Y,
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSource.X,
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSource.Y);
-
-	Renderer->DrawBitmap(
-		Engine->Mouse.MouseBitmap.Bitmap,
-		DestRect,
-		// Always render mouse cursor at full opacity
-		1,
-		D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-		SourceRect);
-}
-
 bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
 {
 	if (Sender->NoCollision || 
@@ -1131,60 +732,6 @@ void BroadcastCollision(Object* CallbackOwner, CollisionComponent* Sender, Colli
 		Sender->IsOverlapped = false;
 		CallbackOwner->OnEndOverlap(Sender->CollisionTag, Target->CollisionTag);
 	}
-}
-
-void AssignCollisionRectangleToRender(
-	ID2D1HwndRenderTarget* Renderer, CollisionComponent* CollisionRectToRender)
-{
-	if (!CollisionRectToRender->RenderCollisionRect)
-	{
-		return;
-	}
-
-	// "1" is alpha value
-	const D2D1_COLOR_F Color =
-		{ CollisionRectToRender->CollisionRectColor.R,
-		CollisionRectToRender->CollisionRectColor.G,
-		CollisionRectToRender->CollisionRectColor.B, 1 };
-
-	ID2D1SolidColorBrush* Brush;
-	Renderer->CreateSolidColorBrush(Color, &Brush);
-
-	Brush->SetOpacity(CollisionRectToRender->Opacity);
-
-	D2D1_RECT_F Rect = D2D1::RectF(
-		CollisionRectToRender->ComponentLocation.X,
-		CollisionRectToRender->ComponentLocation.Y,
-		CollisionRectToRender->ComponentLocation.X +
-		CollisionRectToRender->CollisionRect.X,
-		CollisionRectToRender->ComponentLocation.Y +
-		CollisionRectToRender->CollisionRect.Y);
-
-	if (CollisionRectToRender->DrawFilledRectangle)
-	{
-		Renderer->FillRectangle(Rect, Brush);
-	}
-	else
-	{
-		Renderer->DrawRectangle(Rect, Brush);
-	}
-
-	Brush->Release();
-}
-
-void RenderCollisionRectangles(ID2D1HwndRenderTarget* Renderer,
-	std::vector<CollisionComponent*> CollisionRectsToRender)
-{
-	for (int i = 0; i < CollisionRectsToRender.size(); ++i)
-	{
-		AssignCollisionRectangleToRender(Renderer, CollisionRectsToRender[i]);
-	}
-}
-
-void RenderCollisionRectangle(ID2D1HwndRenderTarget* Renderer,
-	CollisionComponent* CollisionRectToRender)
-{
-	AssignCollisionRectangleToRender(Renderer, CollisionRectToRender);
 }
 
 SVector GetObjectLocation(Object* Object)
@@ -1541,13 +1088,13 @@ void ActivateLevel(
 		}
 	}
 
-	for (int i = 0; i < Engine->InterfaceObjects_LevelActivatedCallback.size(); ++i)
+	for (int i = 0; i < Engine->InterfaceObjects_LevelActivated.size(); ++i)
 	{
-		Engine->InterfaceObjects_LevelActivatedCallback[i]->OnLevelActivated();
+		Engine->InterfaceObjects_LevelActivated[i]->InterfaceEvent_LevelActivated();
 	}
 }
 
-void InitWindow(
+void InitWindowAndRenderer(
 	VoodooEngine* Engine,
 	LPCWSTR WindowTitle, 
 	WNDPROC WindowsProcedure,
@@ -1600,8 +1147,37 @@ void StorePlayerStartGameObjects(VoodooEngine* Engine)
 	}
 }
 
-void InitEngine(VoodooEngine* Engine)
+void AssignLevelEditorRenderLayerNames(VoodooEngine* Engine, SRenderLayerNames RenderLayerNames)
 {
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_0] =
+		{ RenderLayerNames.RenderlayerName_0 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_1] =
+		{ RenderLayerNames.RenderlayerName_1 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_2] =
+		{ RenderLayerNames.RenderlayerName_2 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_3] =
+		{ RenderLayerNames.RenderlayerName_3 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_4] =
+		{ RenderLayerNames.RenderlayerName_4 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_5] =
+		{ RenderLayerNames.RenderlayerName_5 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_6] =
+		{ RenderLayerNames.RenderlayerName_6 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_7] =
+		{ RenderLayerNames.RenderlayerName_7 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_8] =
+		{ RenderLayerNames.RenderlayerName_8 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_9] =
+		{ RenderLayerNames.RenderlayerName_9 };
+	Engine->StoredLevelEditorRenderLayers[RENDERLAYER_10] =
+		{ RenderLayerNames.RenderlayerName_10 };
+};
+
+void InitEngine(VoodooEngine* Engine, SRenderLayerNames RenderLayerNames)
+{
+	// Assign the render layer names and ID's
+	AssignLevelEditorRenderLayerNames(Engine, RenderLayerNames);
+
 	// Setup player start game objects
 	StorePlayerStartGameObjects(Engine);
 
@@ -1641,52 +1217,6 @@ void InitEngine(VoodooEngine* Engine)
 	{
 		LevelEditor* LevelEditorInstance = new LevelEditor(Engine);
 	}
-}
-
-void RenderLevelEditor(VoodooEngine* Engine)
-{
-	if (!Engine->EditorMode)
-	{ 
-		return;
-	}
-
-	RenderBitmaps(Engine->Renderer, Engine->StoredEditorBitmapComponents);
-	RenderBitmaps(Engine->Renderer, Engine->StoredButtonBitmapComponents);
-	RenderBitmaps(Engine->Renderer, Engine->StoredButtonTexts);
-}
-
-void Render(VoodooEngine* Engine)
-{
-	// Render the game background first (painter's algorithm)
-	RenderBitmap(Engine->Renderer, Engine->CurrentLevelBackground);
-
-	// Render all bitmaps (from gameobjects) stored in engine
-	RenderBitmaps(Engine->Renderer, Engine->StoredBitmapComponents, RENDERLAYER_MAXNUM);
-	// Render all collision rects
-	RenderCollisionRectangles(
-		Engine->Renderer, Engine->StoredCollisionComponents);
-
-	// Call render interface to all inherited objects
-	for (int i = 0; i < Engine->InterfaceObjects_Render.size(); ++i)
-	{
-		Engine->InterfaceObjects_Render[i]->OnRenderBroadcast(Engine->Renderer);
-	}
-	// Render editor related stuff
-	if (Engine->EditorMode)
-	{
-		RenderLevelEditor(Engine);
-		RenderUITextsRenderLayer(Engine);
-	}
-	// Render debug related stuff
-	if (Engine->DebugMode)
-	{
-		RenderCollisionRectangles(
-			Engine->Renderer, Engine->StoredEditorCollisionComponents);
-		RenderBitmaps(
-			Engine->Renderer, Engine->StoredScreenPrintTexts);
-	}
-	// This replaces the default windows system mouse cursor (it's hidden)
-	RenderCustomMouseCursor(Engine->Renderer, Engine);
 }
 
 void RunEngine(VoodooEngine* Engine)
@@ -1756,7 +1286,7 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 	// Default new location as the location of the component owner
 	SVector NewLocation = CharacterToAddMovement->Location;
 
-	// Add new location on X Axis (left/right)
+	// Add new location on X Axis (left/right) if allowed
 	if (CharacterToAddMovement->MoveComp.MovementDirection.X != 0)
 	{
 		if (CharacterToAddMovement->MoveComp.MovementDirection.X < 0 &&
@@ -1868,17 +1398,20 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 		else if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp &&
 			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown)
 		{
+			CharacterToAddMovement->MoveComp.Velocity = 0;
 			NewLocation.Y = CharacterToAddMovement->MoveComp.RoofHitCollisionLocation + 5;
 		}
 		
 		// Prevent character from going into walls
-		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft)
+		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft && 
+			CharacterToAddMovement->MoveComp.MovementDirection.X < 0)
 		{
-			NewLocation.X = CharacterToAddMovement->MoveComp.WallLeftHitCollisionLocation + 1;
+			NewLocation.X = CharacterToAddMovement->MoveComp.WallLeftHitCollisionLocation;
 		}
-		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight)
+		if (CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight &&
+			CharacterToAddMovement->MoveComp.MovementDirection.X > 0)
 		{
-			NewLocation.X = CharacterToAddMovement->MoveComp.WallRightHitCollisionLocation - 1;
+			NewLocation.X = CharacterToAddMovement->MoveComp.WallRightHitCollisionLocation;
 		}
 	}
 
