@@ -1,13 +1,5 @@
 #include "VoodooEngine.h"
 
-// File I/O
-#include <commdlg.h>
-#include <fstream>
-#include <sstream>
-
-// Disable warning of using "wcstombs"
-#pragma warning(disable:4996)
-
 // Create and register app window
 static void CreateAppWindow(SWindowParameters& WindowParams, WNDPROC InputCallbackFunction)
 {
@@ -494,6 +486,11 @@ void SetButtonState(
 	}
 }
 
+void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize)
+{
+	Engine->Mouse.MouseCollider.CollisionRect = ColliderSize;
+}
+
 void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
 {
 	// Add mouse collider used for detecting mouse "hover" (is invisible as default, when not in debug mode)
@@ -523,11 +520,6 @@ void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize)
 	}
 }
 
-void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize)
-{
-	Engine->Mouse.MouseCollider.CollisionRect = ColliderSize;
-}
-
 void SetCustomMouseCursorLocation(VoodooEngine* Engine, SVector NewLocation)
 {
 	if (!Engine || 
@@ -554,35 +546,6 @@ void UpdateCustomMouseCursorLocation(VoodooEngine* Engine)
 	MousePosition.Y = MousePositionPoint.y;
 	
 	SetCustomMouseCursorLocation(Engine, MousePosition);
-}
-
-void SetMouseState(bool Show, VoodooEngine* Engine)
-{
-	if (Show)
-	{
-		Engine->Mouse.MouseCollider.NoCollision = false;
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSetToNotRender = false;
-
-		if (Engine->DebugMode ||
-			!Engine->Mouse.MouseBitmap.Bitmap)
-		{
-			Engine->Mouse.MouseCollider.RenderCollisionRect = true;
-		}
-	}
-	else
-	{
-		// Only allow mouse to be hidden if game is running
-		if (!Engine->GameRunning)
-		{
-			return;
-		}
-
-		Engine->Mouse.MouseCollider.NoCollision = true;
-		Engine->Mouse.MouseBitmap.BitmapParams.BitmapSetToNotRender = true;
-		Engine->Mouse.MouseCollider.RenderCollisionRect = false;
-
-		Engine->Mouse.MouseCollider.CollisionRectColor = { 0.2, 0.5, 0 };
-	}
 }
 
 void Update(VoodooEngine* Engine)
@@ -802,103 +765,6 @@ void StoreGameObjectIDsFromFile(VoodooEngine* Engine)
 	return;
 }
 
-void SaveLevelFile(VoodooEngine* Engine)
-{
-	SaveGameObjectsToFile(Engine->FileName, Engine);
-}
-
-void OpenLevelFile(VoodooEngine* Engine)
-{
-	OPENFILENAMEA OpenFileName = { sizeof(OPENFILENAMEA) };
-	OpenFileName.lStructSize = sizeof(OPENFILENAMEA);
-	OpenFileName.hwndOwner = Engine->Window.HWind;
-	OpenFileName.lpstrFile = Engine->FileName;
-	OpenFileName.lpstrTitle = "Level To Open";
-	OpenFileName.lpstrFilter = "Lev File\0*.LEV\0";
-	OpenFileName.nMaxFile = sizeof(Engine->FileName);
-
-	// If "cancel" button was pressed, then don't load assets
-	if (!GetOpenFileNameA(&OpenFileName))
-	{
-		return;
-	}
-	else
-	{
-		// Pass empty vector since it is only used for storing gameobjects to levels
-		std::vector<GameObject*> EmptyVector;
-		// Called once "open" button has been clicked
-		LoadGameObjectsFromFile(Engine->FileName, Engine, EmptyVector);
-	}
-}
-
-void SaveGameObjectsToFile(char* FileName, VoodooEngine* Engine)
-{
-	std::ofstream File(FileName);
-	if (File.is_open())
-	{
-		for (int i = 0; i < Engine->StoredGameObjects.size(); ++i)
-		{
-			File << Engine->StoredGameObjects[i]->GameObjectID 
-				<< " " << Engine->StoredGameObjects[i]->Location.X 
-				<< " " << Engine->StoredGameObjects[i]->Location.Y << '\n';
-		}
-	}
-
-	File.close();
-}
-
-void LoadGameObjectsFromFile(
-	char* FileName, VoodooEngine* Engine, 
-	std::vector<GameObject*>& LevelToAddGameObject, bool DeleteExistingObjectsOnLoad)
-{
-	if (DeleteExistingObjectsOnLoad)
-	{
-		// Delete all current game objects
-		Engine->DeleteAllGameObjects();
-	}
-
-	std::fstream File(FileName);
-	if (File.is_open())
-	{
-		int GameObjectID = 0;
-		SVector SpawnLocation = {};
-
-		std::string VerticalLine;
-		while (getline(File, VerticalLine))
-		{
-			std::stringstream Stream(VerticalLine);
-			std::string HorizontalLine;
-			std::vector<std::string> HorizontalLineNum;
-			while (Stream >> HorizontalLine)
-			{
-				HorizontalLineNum.push_back(HorizontalLine);
-			}
-			if (HorizontalLineNum.empty())
-			{
-				File.close();
-				return;
-			}
-
-			GameObjectID = (std::stoi(HorizontalLineNum[0]));
-			SpawnLocation.X = (std::stof(HorizontalLineNum[1]));
-			SpawnLocation.Y = (std::stof(HorizontalLineNum[2]));
-			
-			Engine->FunctionPointer_LoadGameObjects(GameObjectID, SpawnLocation, LevelToAddGameObject);
-		}
-	}
-
-	File.close();
-}
-
-void LoadLevelFromFile(
-	VoodooEngine* Engine, std::vector<GameObject*>& LevelToAddGameObjects, const wchar_t* FilePath)
-{
-	char* LevelFileName = new char[100];
-	wcstombs(LevelFileName, FilePath, 100);
-	LoadGameObjectsFromFile(LevelFileName, Engine, LevelToAddGameObjects, false);
-	delete[]LevelFileName;
-}
-
 void ActivateLevel(
 	VoodooEngine* Engine,
 	std::vector<GameObject*>& Level,
@@ -996,6 +862,12 @@ void InitWindowAndRenderer(
 	Engine->Renderer = SetupRenderer(Engine->Renderer, Engine->Window.HWind);
 }
 
+// Store the player start game objects in the asset content browser in the level editor (left, right, up, down). 
+// The objects are placed in levels and used to "teleport" player 
+// to the location of the player start objects on level load, 
+// based on which direction the player was coming from.
+// E.g. if player goes to the right limit of a level and the next level is loaded, 
+// then the "left" player start is where the player will be teleported to
 void StorePlayerStartGameObjects(VoodooEngine* Engine)
 {	
 	// Reserve "0" as texture atlas ID for player start
@@ -1098,7 +970,7 @@ void InitEngine(VoodooEngine* Engine, SRenderLayerNames RenderLayerNames)
 	// since it will be kept in memory throughout the lifetime of the application)
 	if (Engine->EditorMode)
 	{
-		LevelEditor* LevelEditorInstance = new LevelEditor(Engine);
+		VoodooLevelEditor::LevelEditor = new VoodooLevelEditor(Engine);
 	}
 }
 
