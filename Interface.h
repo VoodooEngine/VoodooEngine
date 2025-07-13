@@ -11,10 +11,10 @@ public:
 };
 
 // Generic event interface with the sender as parameter 
-class IEventGeneric
+class IEventNoParameters
 {
 public:
-	virtual void InterfaceEvent_Generic(GameObject* Sender){};
+	virtual void InterfaceEvent_NoParams(){};
 };
 
 // Provides input type taken from Win32 key codes 

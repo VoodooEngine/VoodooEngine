@@ -4,7 +4,10 @@
 #include "CollisionComponent.h"
 #include "BitmapComponent.h"
 #include <vector> 
+
+// Direct2D API
 #include <d2d1.h>
+#pragma comment(lib, "d2d1.lib")
 
 class VoodooEngine;
 
@@ -34,10 +37,3 @@ extern "C" void RenderBitmap(ID2D1HwndRenderTarget* Renderer, BitmapComponent* B
 
 // Called during the game loop
 extern "C" VOODOOENGINE_API void Render(VoodooEngine* Engine);
-
-// Only called internally in Renderer.cpp
-//---------------------
-void RenderBitmaps(
-	ID2D1HwndRenderTarget* Renderer, std::vector<BitmapComponent*> BitmapsToRender,
-	int MaxNumRenderLayers = 0);
-//---------------------

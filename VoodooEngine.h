@@ -1,10 +1,32 @@
 #pragma once
 
+// Win32 API
+//---------------------
+#include <Windows.h>
+
+// Exclude rarely used stuff from Windows headers
+#define WIN32_LEAN_AND_MEAN
+//---------------------
+
+#include <map>
+
+// includes engine class is dependent of 
+//---------------------
 #include "CollisionComponent.h"
+#include "UpdateComponent.h"
 #include "BitmapComponent.h"
-#include "Animation.h"
-#include "Renderer.h"
 #include "Interface.h"
+#include "Renderer.h"
+#include "Button.h"
+#include "Asset.h"
+#include "Text.h"
+//---------------------
+
+// includes indepentent from engine class
+//---------------------
+#include "Interpolate.h"
+#include "Animation.h"
+//---------------------
 
 // VoodooEngine is a complete engine framework for making a 2D game
 // --------------------
@@ -24,7 +46,7 @@
 // COLLISION
 // - Collision detection using "AABB" algorithm
 // 
-// Gravity
+// GRAVITY
 // - Gravity with velocity
 // 
 // SOUND
@@ -45,49 +67,42 @@
 // - IGameState
 // - ILevelActivated
 // 
-// Tools
+// LEVEL
 // - Level editor 
+// - Level loading/unloading
 // 
-// Save/Load
+// TRIGGER
+// - Triggers with begin/end overlapping events
+// 
+// SAVE/LOAD
 // - Saving/loading from files
 // --------------------
 
 // Naming conventions
 // --------------------
-// Prefixes
 // 
+// For class names never make a name shortened, e.g. writing "Params" instead of "Parameters"
+// 
+// PREFIX INITIALS
 // - "S" stands for "Struct" e.g. "SVector", "SColor"
 // - "E" stands for "enum" e.g. "EButtonType"
 // - "I" stands for interface e.g. IInteract, IDamage
 // 
-// Interface naming rules
+// PREFIX INTERFACE
 // - Every interface vector containers needs to have prefix "InterfaceObjects_" e.g. "InterfaceObjects_Input"
 // - Every interfaces inherited virtual functions, 
 // needs to have have prefix of "InterfaceEvent_" e.g. "InterfaceEvent_Input"
 // - Every function that sends input internally in the engine, 
 // needs to have prefix "SendInterface_" e.g. "SendInterface_Input"
 // 
+// PREFIX FUNCTION POINTERS
+// Function pointers needs to have prefix "FunctionPointer_" e.g. "FunctionPointer_LoadGameObjects"
+// 
+// PREFIX "UPDATE"
 // Functions names with prefix "update" naming rule
 // - Every function name with prefix "Update" e.g. "UpdateAnimation", must be called every frame, 
 // NOTE never name anything with "Update" as prefix if you are not going to call it every frame 
 // --------------------
-
-// Exclude rarely used stuff from Windows headers
-#define WIN32_LEAN_AND_MEAN
-
-// Win32 API
-#include <Windows.h>
-
-// Direct2D API
-#pragma comment(lib, "d2d1.lib")
-
-// DirectWrite API
-#include <dwrite.h>
-#pragma comment(lib, "Dwrite.lib")
-
-// STL library
-#include <map>
-#include <string>
 
 // Maximum number of allowed renderlayers
 #define RENDERLAYER_MAXNUM 10
@@ -105,7 +120,7 @@
 #define RENDERLAYER_9 9
 #define RENDERLAYER_10 10
 
-// Global collision tags used by the level editor
+// Collision tags used by the level editor
 #define TAG_LEVEL_EDITOR_GIZMO -1
 #define TAG_LEVEL_EDITOR_BUTTON_ID_NONE -2
 #define TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL -3
@@ -158,7 +173,7 @@
 #define INPUT_KEY_CTRL_RIGHT 0xA3
 
 // Window parameters information i.e. title name of application, screen size, fullscreen/border windowed etc.  
-struct SWindowParams
+struct SWindowParameters
 {
 	HWND HWind = nullptr;
 	WNDCLASSEX WindowClass;
@@ -168,40 +183,16 @@ struct SWindowParams
 	bool Fullscreen = true;
 };
 
-enum ETextBrushColorType
+// Windows procedure parameters information used for input check from windows operating system
+struct SWindowsProcedureParameters
 {
-	WhiteBrush,
-	BlackBrush
+	HWND HWind;
+	UINT Message;
+	WPARAM WParam;
+	LPARAM LParam;
 };
 
-// Struct used to determine the UI text parameters
-struct STextParameters
-{
-	const wchar_t* Text = L"";
-	ETextBrushColorType TextRenderType = ETextBrushColorType::WhiteBrush;
-	bool HideText = false;
-};
-
-// Input
-//---------------------
-// Sends input broadcast to all listeners whenever an input is pressed, 
-// input type ID is set by specific game
-extern "C" VOODOOENGINE_API void SendInterface_Input(
-	std::vector<IInput*> StoredInterfaceObjects, int Input, bool Pressed);
-//---------------------
-
-// Update component inherited by all objects that needs to update each frame
-//---------------------
-class UpdateComponent
-{
-public:
-	bool Paused = false;
-	virtual void Update(float DeltaTime) = 0;
-};
-//---------------------
-
-// Mouse class contains all that is needed for mouse support in the engine
-//---------------------
+// Mouse class contains all that is needed for custom mouse cursor support in the engine
 class VoodooMouse : public Object
 {
 public:
@@ -210,91 +201,6 @@ public:
 	Object* MouseHoveredObject = nullptr;
 	bool PrimaryMousePressed = false;
 	bool SecondaryMousePressed = false;
-};
-//---------------------
-
-// Button
-//---------------------
-// Button state enum 
-// (used by e.g. "SetButtonState" function)
-enum EButtonState
-{
-	Default,
-	Disabled,
-	Hidden
-};
-// Button type enum
-enum EButtonType
-{
-	TwoSided,
-	OneSided,
-	AssetButtonThumbnail
-};
-// Contains all the information for buttons 
-struct SButtonParameters
-{
-	EButtonType ButtonType = TwoSided;
-	const wchar_t* AssetPathButtonBitmap = L"";
-	int ButtonCollisionTag = 0;
-	std::string ButtonTextString = "";
-	SVector ButtonTextOffset = { -2, 10 };
-	SVector ButtonLocation;
-};
-// Generic button class (used by level editor, can be used for game UI)
-class Button
-{
-public:
-	CollisionComponent ButtonCollider;
-	BitmapComponent ButtonBitmap;
-	BitmapComponent AdditionalBackgroundBitmap;
-	SButtonParameters ButtonParams = {};
-	std::vector<BitmapComponent*> ButtonText;
-};
-
-// Asset related
-//---------------------
-// Asset texture atlas struct
-struct SAssetTextureAtlas
-{
-	BitmapComponent TextureAtlas;
-	std::wstring TextureAtlasPath;
-};
-// Asset parameters struct
-// This is used by level editor and save/load system 
-// for the assets built in the levels in the game
-struct SAssetParameters
-{
-	ID2D1Bitmap* TextureAtlas = nullptr;
-	SVector TextureAtlasWidthHeight = { 0, 0 };
-	SVector TextureAtlasOffsetMultiplierWidthHeight = { 1, 1 };
-	int RenderLayer = 0;
-	bool CreateDefaultAssetCollision = false;
-	// Default to asset button empty thumbnail, can be overriden
-	const wchar_t* EditorAssetButtonThumbnailFilePath = L"EngineContent/LevelEditor/AssetButtonBase.png";
-	float AssetButtonThumbnailTextureAtlasHeight = 90;
-	float AssetButtonThumbnailTextureAtlasOffsetMultiplierY = 1;
-};
-// Asset button struct (used by level editor)
-// PLEASE NOTE: Only numbers as "0" and up can be accounted for as ID numbers for assets 
-// (since the level editor use negative numbers as ID for internal level editor stuff)
-struct SAssetButton
-{
-	Button* AssetButton = nullptr;
-	int AssetID = 0;
-	SAssetParameters AssetParams;
-
-	bool operator==(const SAssetButton& Other) const
-	{
-		return (AssetButton == Other.AssetButton);
-	}
-};
-//---------------------
-struct SWindowsProcedureParameters
-{
-	HWND HWind;
-	UINT Message;
-	WPARAM WParam;
-	LPARAM LParam;
 };
 
 // Engine class
@@ -307,7 +213,7 @@ public:
 	bool EditorMode = false;
 	bool EngineRunning = false;
 	bool GameRunning = false;
-	SWindowParams Window;
+	SWindowParameters Window;
 	ID2D1HwndRenderTarget* Renderer = nullptr;
 	D2D1_COLOR_F ClearScreenColor = { 0, 0, 0 };
 
@@ -332,7 +238,7 @@ public:
 
 	// File I/O related
 	char FileName[100];
-	void(*AssetLoadFunctionPointer)(int, SVector, std::vector<GameObject*>&) = nullptr;
+	void(*FunctionPointer_LoadGameObjects)(int, SVector, std::vector<GameObject*>&) = nullptr;
 
 	std::vector<IRender*> InterfaceObjects_Render;
 	std::vector<IInput*> InterfaceObjects_Input;
@@ -441,11 +347,12 @@ public:
 		Engine->ScreenPrintTextColumnsPrinted = 0;
 	}
 
-	static void SendInterface_MouseInput(int MouseButton, bool Pressed)
+	// Sends interface input event whenever an input is updated
+	static void SendInterface_Input(VoodooEngine* Engine, int Input, bool Pressed)
 	{
-		for (int i = 0; i < VoodooEngine::Engine->InterfaceObjects_Input.size(); ++i)
+		for (int i = 0; i < Engine->InterfaceObjects_Input.size(); ++i)
 		{
-			VoodooEngine::Engine->InterfaceObjects_Input[i]->InterfaceEvent_Input(MouseButton, Pressed);
+			Engine->InterfaceObjects_Input[i]->InterfaceEvent_Input(Input, Pressed);
 		}
 	}
 
@@ -453,23 +360,23 @@ public:
 	{
 		switch (Message)
 		{
-			// Primary mouse button
+		// Primary mouse button
 		case WM_LBUTTONDOWN:
 			Engine->Mouse.PrimaryMousePressed = true;
-			SendInterface_MouseInput(WM_LBUTTONDOWN, true);
+			SendInterface_Input(Engine, WM_LBUTTONDOWN, true);
 			break;
 		case WM_LBUTTONUP:
 			Engine->Mouse.PrimaryMousePressed = false;
-			SendInterface_MouseInput(WM_LBUTTONUP, false);
+			SendInterface_Input(Engine, WM_LBUTTONUP, false);
 			break;
-			// Secondary mouse button
+		// Secondary mouse button
 		case WM_RBUTTONDOWN:
 			Engine->Mouse.SecondaryMousePressed = true;
-			SendInterface_MouseInput(WM_RBUTTONDOWN, true);
+			SendInterface_Input(Engine, WM_RBUTTONDOWN, true);
 			break;
 		case WM_RBUTTONUP:
 			Engine->Mouse.SecondaryMousePressed = false;
-			SendInterface_MouseInput(WM_RBUTTONUP, false);
+			SendInterface_Input(Engine, WM_RBUTTONUP, false);
 			break;
 		}
 	};
@@ -479,10 +386,10 @@ public:
 		switch (Message)
 		{
 		case WM_KEYDOWN:
-			SendInterface_Input(VoodooEngine::Engine->InterfaceObjects_Input, WParam, true);
+			SendInterface_Input(Engine, WParam, true);
 			break;
 		case WM_KEYUP:
-			SendInterface_Input(VoodooEngine::Engine->InterfaceObjects_Input, WParam, false);
+			SendInterface_Input(Engine, WParam, false);
 			break;
 		default:
 			break;
@@ -699,339 +606,26 @@ public:
 	};
 };
 
-// Used to setup check for collision detection on left, right, up and down sides of a game object 
-struct SQuadCollisionParameters
-{
-	CollisionComponent CollisionLeft;
-	CollisionComponent CollisionRight;
-	CollisionComponent CollisionUp;
-	CollisionComponent CollisionDown;
+// includes that are dependent of engine class
+//---------------------
+#include "MovementComponent.h"
+#include "TimerHandle.h"
 
-	SVector RectSizeCollisionLeft;
-	SVector RectSizeCollisionRight;
-	SVector RectSizeCollisionUp;
-	SVector RectSizeCollisionDown;
-
-	SVector RelativeOffsetCollisionLeft;
-	SVector RelativeOffsetCollisionRight;
-	SVector RelativeOffsetCollisionUp;
-	SVector RelativeOffsetCollisionDown;
-
-	bool CollisionHitLeft = false;
-	bool CollisionHitRight = false;
-	bool CollisionHitUp = false;
-	bool CollisionHitDown = false;
-};
-
-class MovementComponent
-{
-public:	
-	SVector MovementDirection;
-	float MovementSpeed = 100;
-	SQuadCollisionParameters QuadCollisionParams;
-	
-	// Velocity makes gravity smooth when character is jumping/falling
-	float Velocity = 0;
-	float JumpHeight = 20; 
-	float GravityScale = 20;
-	bool GravityEnabled = false;
-
-	float WallLeftHitCollisionLocation = 0;
-	float WallRightHitCollisionLocation = 0;
-	float GroundHitCollisionLocation = 0;
-	float RoofHitCollisionLocation = 0;
-
-	void InitMovementComponent(GameObject* ComponentOwner,
-		SQuadCollisionParameters DesiredQuadCollisionParams, 
-		float DesiredMovementSpeed, bool EnableGravity, VoodooEngine* Engine)
-	{
-		InitCollisionRectangles(ComponentOwner, DesiredQuadCollisionParams, Engine);
-		MovementSpeed = DesiredMovementSpeed;
-		GravityEnabled = EnableGravity;
-	}
-	void RemoveMovementComponent(VoodooEngine* Engine)
-	{
-		Engine->RemoveComponent(
-			&QuadCollisionParams.CollisionLeft, &Engine->StoredCollisionComponents);
-		Engine->RemoveComponent(
-			&QuadCollisionParams.CollisionRight, &Engine->StoredCollisionComponents);
-		Engine->RemoveComponent(
-			&QuadCollisionParams.CollisionUp, &Engine->StoredCollisionComponents);
-		Engine->RemoveComponent(
-			&QuadCollisionParams.CollisionDown, &Engine->StoredCollisionComponents);
-	}
-	void UpdateQuadCollisionLocation(SVector NewLocation)
-	{
-		UpdateCollisionRectsLocation(NewLocation);
-	}
-	void UpdateGravity()
-	{
-		// Disable velocity/falling if gravity is not enabled 
-		// (e.g. the character movement is top down 4 directional)
-		if (!GravityEnabled)
-		{
-			Velocity = 0;
-			Falling = false;
-			return;
-		}
-
-		if (QuadCollisionParams.CollisionHitDown)
-		{
-			Falling = false;
-			Jumping = false;
-			
-			// Reset velocity when ground is detected and jumping is not requested
-			if (!IsRequestingJump())
-			{
-				Velocity = 0;
-			}
-		}
-		else
-		{
-			// Continously push velocity (gravity) down
-			Velocity += 1;
-
-			Falling = true;
-			
-			// As soon as character is in the air, reset jump request
-			JumpRequested = false;
-		}
-	}
-	bool IsRequestingJump()
-	{
-		return JumpRequested;
-	}
-	// Will only allow jump if gravity is enabled, 
-	// and if character is not already jumping/falling
-	void Jump()
-	{
-		if (GravityEnabled &&
-			!Jumping &&
-			!Falling)
-		{
-			Jumping = true;
-			JumpRequested = true;
-			Velocity = -JumpHeight;
-		}
-	}
-	bool IsJumping()
-	{
-		return Jumping;
-	}
-	// Force reset jump valus to default
-	// (only use this when you want to instant reset jump values e.g. on player death)
-	void ForceResetJumpValues()
-	{
-		Jumping = false;
-		JumpRequested = false;
-		Falling = false;
-		QuadCollisionParams.CollisionHitUp = false;
-		QuadCollisionParams.CollisionHitDown = false;
-		Velocity = 0;
-	}
-	// Will only allow climb if not falling or jumping
-	void Climb()
-	{
-		if (ClimbAllowed())
-		{
-			Climbing = true;
-		}
-	}
-	void StopClimb()
-	{
-		Climbing = false;
-	}
-	bool IsClimbing()
-	{
-		return Climbing;
-	}
-	bool IsFalling()
-	{
-		return Falling;
-	}
-
-private:
-	bool Climbing = false;
-	bool Falling = false;
-	bool Jumping = false;
-	bool JumpRequested = false;
-
-	bool ClimbAllowed()
-	{
-		bool CanClimb = false;
-		if (!Falling &&
-			!Jumping)
-		{
-			CanClimb = true;
-		}
-		return CanClimb;
-	}
-
-	void InitCollisionRectangles(GameObject* ComponentOwner,
-		SQuadCollisionParameters DesiredQuadCollisionParams, VoodooEngine* Engine)
-	{
-		if (Engine->DebugMode)
-		{
-			QuadCollisionParams.CollisionLeft.RenderCollisionRect = true;
-			QuadCollisionParams.CollisionRight.RenderCollisionRect = true;
-			QuadCollisionParams.CollisionUp.RenderCollisionRect = true;
-			QuadCollisionParams.CollisionDown.RenderCollisionRect = true;
-
-			QuadCollisionParams.CollisionLeft.CollisionRectColor = Engine->ColorYellow;
-			QuadCollisionParams.CollisionRight.CollisionRectColor = Engine->ColorYellow;
-			QuadCollisionParams.CollisionUp.CollisionRectColor = Engine->ColorYellow;
-			QuadCollisionParams.CollisionDown.CollisionRectColor = Engine->ColorYellow;
-		}
-
-		QuadCollisionParams.CollisionLeft.CollisionTag = ComponentOwner->GameObjectID;
-		QuadCollisionParams.CollisionRight.CollisionTag = ComponentOwner->GameObjectID;
-		QuadCollisionParams.CollisionUp.CollisionTag = ComponentOwner->GameObjectID;
-		QuadCollisionParams.CollisionDown.CollisionTag = ComponentOwner->GameObjectID;
-
-		QuadCollisionParams.CollisionLeft.CollisionRect = 
-			DesiredQuadCollisionParams.RectSizeCollisionLeft;
-		QuadCollisionParams.CollisionRight.CollisionRect =
-			DesiredQuadCollisionParams.RectSizeCollisionRight;
-		QuadCollisionParams.CollisionUp.CollisionRect =
-			DesiredQuadCollisionParams.RectSizeCollisionUp;
-		QuadCollisionParams.CollisionDown.CollisionRect =
-			DesiredQuadCollisionParams.RectSizeCollisionDown;
-
-		QuadCollisionParams.RelativeOffsetCollisionLeft =
-			DesiredQuadCollisionParams.RelativeOffsetCollisionLeft;
-		QuadCollisionParams.RelativeOffsetCollisionRight =
-			DesiredQuadCollisionParams.RelativeOffsetCollisionRight;
-		QuadCollisionParams.RelativeOffsetCollisionUp =
-			DesiredQuadCollisionParams.RelativeOffsetCollisionUp;
-		QuadCollisionParams.RelativeOffsetCollisionDown =
-			DesiredQuadCollisionParams.RelativeOffsetCollisionDown;
-
-		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionLeft);
-		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionRight);
-		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionUp);
-		Engine->StoredCollisionComponents.push_back(&QuadCollisionParams.CollisionDown);
-	}
-	void UpdateCollisionRectsLocation(SVector NewLocation)
-	{
-		QuadCollisionParams.CollisionLeft.ComponentLocation.X =
-			NewLocation.X + QuadCollisionParams.RelativeOffsetCollisionLeft.X;
-		QuadCollisionParams.CollisionLeft.ComponentLocation.Y =
-			NewLocation.Y + QuadCollisionParams.RelativeOffsetCollisionLeft.Y;
-
-		QuadCollisionParams.CollisionRight.ComponentLocation.X =
-			NewLocation.X + QuadCollisionParams.RelativeOffsetCollisionRight.X;
-		QuadCollisionParams.CollisionRight.ComponentLocation.Y =
-			NewLocation.Y + QuadCollisionParams.RelativeOffsetCollisionRight.Y;
-
-		QuadCollisionParams.CollisionUp.ComponentLocation.X =
-			NewLocation.X + QuadCollisionParams.RelativeOffsetCollisionUp.X;
-		QuadCollisionParams.CollisionUp.ComponentLocation.Y =
-			NewLocation.Y + QuadCollisionParams.RelativeOffsetCollisionUp.Y;
-
-		QuadCollisionParams.CollisionDown.ComponentLocation.X =
-			NewLocation.X + QuadCollisionParams.RelativeOffsetCollisionDown.X;
-		QuadCollisionParams.CollisionDown.ComponentLocation.Y =
-			NewLocation.Y + QuadCollisionParams.RelativeOffsetCollisionDown.Y;
-	}
-};
-
+// TO DO: MAKE THIS PRIVATE ONLY CALLED WITHIN "INIT_ENGINE" FUNCTION
+// ----------
 // Custom mouse cursor related
 //---------------------
 extern "C" VOODOOENGINE_API void CreateMouse(VoodooEngine* Engine, SVector MouseColliderSize);
 extern "C" VOODOOENGINE_API void SetMouseColliderSize(VoodooEngine* Engine, SVector ColliderSize);
-extern "C" VOODOOENGINE_API void SetMouseState(bool Show, VoodooEngine* Engine);
 //---------------------
 
-extern "C" VOODOOENGINE_API Button* CreateButton(
-	VoodooEngine* Engine, 
-	Button* ButtonToCreate, 
-	int ButtonID, 
-	EButtonType ButtonType,
-	std::string ButtonText,
-	SVector ButtonLocation, 
-	const wchar_t* AssetPath,
-	float TextureAtlasHeight = {},
-	float TextureAtlasOffsetYMultiplier = {});
+// Show/hide engine custom mouse cursor
+extern "C" VOODOOENGINE_API void SetMouseState(bool Show, VoodooEngine* Engine);
 
-extern "C" VOODOOENGINE_API Button* DeleteButton(VoodooEngine* Engine, Button* ButtonToDelete);
-extern "C" VOODOOENGINE_API void SetButtonState(
-	Button* ButtonToUpdate, EButtonState NewButtonState, bool KeepBitmapOffsetUnchanged = false);
-//-------------------------------------------
-
-// Editor asset list
-struct SEditorAssetPathList
-{
-	// Engine
-	const wchar_t* GameIcon = L"EngineContent/Ico/GameIcon.ico";
-	const wchar_t* EditorIcon = L"EngineContent/Ico/EditorIcon.ico";
-
-	// Font asset paths
-	const wchar_t* DefaultFont = L"EngineContent/Font/FontMonogram.png";
-	const wchar_t* DebugFont = L"EngineContent/Font/FontMonogramDebug.png";
-
-	// Used for debug only 
-	const wchar_t* AnimationSpritesDebug = L"EngineContent/Debug/AnimationTesting.png";
-
-	// Level editor
-	//-----------------
-	// Level editor UI
-	const wchar_t* LevelEditorUITop = L"EngineContent/LevelEditor/LevelEditorUI_Top.png";
-	const wchar_t* LevelEditorUIOverlay = L"EngineContent/LevelEditor/LevelEditorUI_Overlay.png";
-	const wchar_t* LevelEditorTileIconBase = L"EngineContent/LevelEditor/TileIconBase.png";
-	// Buttons
-	const wchar_t* LevelEditorButtonW140 = 
-		L"EngineContent/LevelEditor/ButtonW140.png";
-	const wchar_t* LevelEditorButtonActivateDeactivateW140 = 
-		L"EngineContent/LevelEditor/ActivateDeactivateButtonW140.png";
-	const wchar_t* LevelEditorButtonW160 =
-		L"EngineContent/LevelEditor/ButtonW160.png";
-	const wchar_t* RenderLayerEyeIcon =
-		L"EngineContent/LevelEditor/RenderLayerEyeIcon.png";
-	// Gizmo
-	const wchar_t* Gizmo = L"EngineContent/LevelEditor/Gizmo.png";
-	// Player start
-	// - The path to the png file of player start bitmap
-	// - (used by level editor to determine the player position on game start/level load)
-	const wchar_t* AssetPathPlayerStartBitmap =
-		L"EngineContent/LevelEditor/PlayerStart_TextureAtlas.png";
-	//-----------------
-};
-
-// Create the text format to be used by all direct write IU text for the remainder of the program
-extern "C" VOODOOENGINE_API void CreateUITextFormat(VoodooEngine* Engine);
 // Print debug text to screen
 extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
-//---------------------
 
-// Timer that counts down and sends a function pointer callback when finished
-class TimerHandle : public UpdateComponent
-{
-public:
-	float TimerValue = 1;
-	bool TimerCompleted = false;
-	void(*OnTimerEndFunctionPointer)(void);
-	void SetTimer(float NewTime)
-	{
-		VoodooEngine::Engine->StoredTimerUpdateComponents.push_back(this);
-		TimerCompleted = false;
-		TimerValue = NewTime;
-	};
-	void Update(float DeltaTime)
-	{
-		TimerValue -= 0.025;
-		if (TimerValue <= 0)
-		{
-			if (!TimerCompleted)
-			{
-				TimerCompleted = true;
-				OnTimerEndFunctionPointer();
-				VoodooEngine::Engine->RemoveComponent(
-					(UpdateComponent*)this, &VoodooEngine::Engine->StoredTimerUpdateComponents);
-			}
-		}
-	};
-};
-
+// Pause/unpause game
 extern "C" VOODOOENGINE_API void PauseGame(bool SetGamePaused, VoodooEngine* Engine);
 
 // Gizmo
@@ -1044,7 +638,7 @@ public:
 	CollisionComponent GizmoCollision;
 
 	// Will send event whenever a game object is moved by the gizmo
-	std::vector<IEventGeneric*> MoveGameObjectEventListeners;
+	std::vector<IEventNoParameters*> MoveGameObjectEventListeners;
 
 	GameObject* SelectedGameObject = nullptr;
 	GameObject* CurrentClickedGameObject = nullptr;
@@ -1147,7 +741,7 @@ public:
 
 			for (int i = 0; i < MoveGameObjectEventListeners.size(); ++i)
 			{
-				MoveGameObjectEventListeners[i]->InterfaceEvent_Generic(nullptr);
+				MoveGameObjectEventListeners[i]->InterfaceEvent_NoParams();
 			}
 		}
 	};
@@ -1419,6 +1013,8 @@ public:
 };
 //---------------------
 
+// TO DO: MAKE THIS PRIVATE AND CALLED ON INIT ENGINE
+// ----------
 // Store the player start game objects (left, right, up, down). 
 // The objects are placed in levels and used to "teleport" player 
 // to the location of the player start objects on level load, 
@@ -1426,7 +1022,10 @@ public:
 // E.g. if player goes to the right limit of a level and the next level is loaded, 
 // then the "left" player start is where the player will be teleported to
 extern "C" VOODOOENGINE_API void StorePlayerStartGameObjects(VoodooEngine* Engine);
+//-----------
 
+// TO DO: MAKE THIS PRIVATE AND CALLED ON INIT ENGINE
+// ----------
 // File I/O
 //---------------------
 // Read only
@@ -1436,6 +1035,10 @@ extern "C" VOODOOENGINE_API bool SetEditorMode();
 extern "C" VOODOOENGINE_API void StoreTextureAtlasesFromFile(VoodooEngine* Engine);
 // Gather all the game object's ID and parameters info from a file and store them in the engine
 extern "C" VOODOOENGINE_API void StoreGameObjectIDsFromFile(VoodooEngine* Engine);
+// ----------
+
+// File I/O
+//---------------------
 // Saves the current open file as a "Lev" file
 extern "C" VOODOOENGINE_API void SaveLevelFile(VoodooEngine* Engine);
 // Opens windows file dialouge for which is used to select what level to open 
@@ -1451,7 +1054,7 @@ extern "C" VOODOOENGINE_API void LoadLevelFromFile(
 
 // Level Editor
 //---------------------
-class LevelEditor : public Object, public UpdateComponent, public IInput, public IEventGeneric
+class LevelEditor : public Object, public UpdateComponent, public IInput, public IEventNoParameters
 {
 
 // Button locations
@@ -1574,7 +1177,7 @@ public:
 	EMenuType CurrentMenuTypeActivated = EMenuType::None;
 
 	// This is called whenever a game object is moved by the gizmo
-	void InterfaceEvent_Generic()
+	void InterfaceEvent_NoParams()
 	{
 		if (LevelEditorVisible)
 		{
@@ -2023,13 +1626,13 @@ public:
 			// In asset browser mode, 
 			// when asset button is clicked a game object based on ID is spawned
 			case LevelEditor::AssetBrowser: 
-				if (Engine->AssetLoadFunctionPointer)
+				if (Engine->FunctionPointer_LoadGameObjects)
 				{
 					// When a game object is selected to spawn from asset menu,
 					// pass an empty vector since it is only used for storing gameobjects to levels, 
 					// when a level is loaded
 					std::vector<GameObject*> EmptyVector;
-					Engine->AssetLoadFunctionPointer(
+					Engine->FunctionPointer_LoadGameObjects(
 						HoveredButtonID,
 						{ ASSET_SELECTION_SPAWN_LOCATION_X, ASSET_SELECTION_SPAWN_LOCATION_Y }, 
 						EmptyVector);
@@ -2335,9 +1938,6 @@ extern "C" VOODOOENGINE_API void InitWindowAndRenderer(
 extern "C" VOODOOENGINE_API void InitEngine(VoodooEngine* Engine, SRenderLayerNames RenderLayerNames);
 // Run the engine game loop
 extern "C" VOODOOENGINE_API void RunEngine(VoodooEngine* Engine);
-
-// Smooth interpolation from point A to B
-extern "C" VOODOOENGINE_API float Interpolate(float Current, float Target, float DeltaTime, float Speed);
 
 // Character class that can be used as a base for a player or NPC ect., has built in update component.
 // Note that "OnGameObjectCreated" and OnGameObjectDeleted" can't be called in character class, 

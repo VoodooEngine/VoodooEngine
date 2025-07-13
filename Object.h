@@ -2,7 +2,7 @@
 
 #include "VoodooEngineDLLExport.h"
 #include "TransformComponent.h"
-#include "Vector.h"
+#include "SVector.h"
 
 // Object
 //---------------------

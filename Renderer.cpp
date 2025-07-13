@@ -142,9 +142,10 @@ void RenderLevelEditor(VoodooEngine* Engine)
 		return;
 	}
 
-	RenderBitmaps(Engine->Renderer, Engine->StoredEditorBitmapComponents);
-	RenderBitmaps(Engine->Renderer, Engine->StoredButtonBitmapComponents);
-	RenderBitmaps(Engine->Renderer, Engine->StoredButtonTexts);
+	// Default render layer is used
+	RenderBitmaps(Engine->Renderer, Engine->StoredEditorBitmapComponents, 0);
+	RenderBitmaps(Engine->Renderer, Engine->StoredButtonBitmapComponents, 0);
+	RenderBitmaps(Engine->Renderer, Engine->StoredButtonTexts, 0);
 }
 
 void RenderUITextsRenderLayer(VoodooEngine* Engine)
@@ -271,8 +272,10 @@ void Render(VoodooEngine* Engine)
 	{
 		RenderCollisionRectangles(
 			Engine->Renderer, Engine->StoredEditorCollisionComponents);
+
+		// Default render layer is used
 		RenderBitmaps(
-			Engine->Renderer, Engine->StoredScreenPrintTexts);
+			Engine->Renderer, Engine->StoredScreenPrintTexts, 0);
 	}
 
 	// This replaces the default windows system mouse cursor 

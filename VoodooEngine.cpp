@@ -5,10 +5,11 @@
 #include <fstream>
 #include <sstream>
 
+// Disable warning of using "wcstombs"
 #pragma warning(disable:4996)
 
 // Create and register app window
-static void CreateAppWindow(SWindowParams& WindowParams, WNDPROC InputCallbackFunction)
+static void CreateAppWindow(SWindowParameters& WindowParams, WNDPROC InputCallbackFunction)
 {
 	WindowParams.WindowClass.cbSize = sizeof(WNDCLASSEX);
 	WindowParams.WindowClass.lpfnWndProc = InputCallbackFunction;
@@ -131,29 +132,6 @@ void SetFPSLimit(VoodooEngine* Engine, float FPSLimit)
 	Engine->FrameTargetTime = (1000 / Engine->FPS);
 }
 
-void SendInterface_Input(std::vector<IInput*> StoredInterfaceObjects, int Input, bool Pressed)
-{
-	for (int i = 0; i < StoredInterfaceObjects.size(); ++i)
-	{
-		StoredInterfaceObjects[i]->InterfaceEvent_Input(Input, Pressed);
-	}
-}
-
-// Check if specific input is being pressed/released, 
-// returns false (not pressed) as default if no input is found
-bool CheckInputPressed(std::map<int, bool> StoredInputs, int InputToCheck)
-{
-	int KeyToCheck = InputToCheck;
-	auto Iterator = StoredInputs.find(KeyToCheck);
-
-	if (Iterator != StoredInputs.end())
-	{
-		return Iterator->second;
-	}
-
-	return false;
-}
-
 void ShiftBitmapToLetter(int LetterID, BitmapComponent* LetterBitmap, VoodooEngine* Engine)
 {
 	LetterBitmap->BitmapParams.BitmapSource.X = Engine->LetterSpace * LetterID;
@@ -238,28 +216,6 @@ BitmapComponent* CreateLetter(
 	AssignLetterShiftByID(LetterString, CreatedLetter, Engine);
 
 	return CreatedLetter;
-}
-
-void CreateUITextFormat(VoodooEngine* Engine)
-{
-	IDWriteFactory* IDWriteFactory = nullptr;
-
-	DWriteCreateFactory(
-		DWRITE_FACTORY_TYPE_SHARED,
-		__uuidof(IDWriteFactory),
-		reinterpret_cast<IUnknown**>(&IDWriteFactory));
-
-	IDWriteFactory->CreateTextFormat(
-		L"Arial",
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		20.0f * 96.0f / 72.0f,
-		L"en-US",
-		&Engine->TextFormat);
-
-	IDWriteFactory->Release();
 }
 
 void CreateText(VoodooEngine* Engine, Button* ButtonReference, SButtonParameters ButtonParams)
@@ -661,79 +617,6 @@ void Update(VoodooEngine* Engine)
 	}
 }
 
-bool IsCollisionDetected(CollisionComponent* Sender, CollisionComponent* Target)
-{
-	if (Sender->NoCollision || 
-		Target->NoCollision ||
-		Sender == Target)
-	{
-		return false;
-	}
-
-	for (int i = 0; i < Sender->CollisionTagsToIgnore.size(); ++i)
-	{
-		if (Sender->CollisionTagsToIgnore[i] == Target->CollisionTag)
-		{
-			return false;
-		}
-	}
-
-	if (Sender->ComponentLocation.X < Target->ComponentLocation.X + Target->CollisionRect.X &&
-		Target->ComponentLocation.X < Sender->ComponentLocation.X + Sender->CollisionRect.X &&
-		Sender->ComponentLocation.Y < Target->ComponentLocation.Y + Target->CollisionRect.Y &&
-		Target->ComponentLocation.Y < Sender->ComponentLocation.Y + Sender->CollisionRect.Y)
-	{
-		return true;
-	}
-
-	return false;
-}
-
-void BroadcastCollision(Object* CallbackOwner, CollisionComponent* Sender, CollisionComponent* Target)
-{
-	if (!Sender)
-	{ 
-		return;
-	}
-	if (!Target)
-	{ 
-		return;
-	}
-	if (Sender->NoCollision)
-	{ 
-		return;
-	}
-	if (Target->NoCollision)
-	{
-		return;
-	}
-	bool Ignore = false;
-	if (IsCollisionDetected(Sender, Target))
-	{
-		for (int i = 0; i < Sender->CollisionTagsToIgnore.size(); ++i)
-		{
-			if (Target->CollisionTag == Sender->CollisionTagsToIgnore[i])
-			{
-				Ignore = true;
-				break;
-			}
-		}
-
-		if (!Ignore && 
-			!Sender->IsOverlapped)
-		{
-			Sender->IsOverlapped = true;
-			CallbackOwner->OnBeginOverlap(Sender->CollisionTag, Target->CollisionTag, Target->Owner);
-		}
-	}
-	else if (!Ignore && 
-		Sender->IsOverlapped)
-	{
-		Sender->IsOverlapped = false;
-		CallbackOwner->OnEndOverlap(Sender->CollisionTag, Target->CollisionTag);
-	}
-}
-
 SVector GetObjectLocation(Object* Object)
 {
 	return Object->Location;
@@ -1000,7 +883,7 @@ void LoadGameObjectsFromFile(
 			SpawnLocation.X = (std::stof(HorizontalLineNum[1]));
 			SpawnLocation.Y = (std::stof(HorizontalLineNum[2]));
 			
-			Engine->AssetLoadFunctionPointer(GameObjectID, SpawnLocation, LevelToAddGameObject);
+			Engine->FunctionPointer_LoadGameObjects(GameObjectID, SpawnLocation, LevelToAddGameObject);
 		}
 	}
 
@@ -1232,11 +1115,6 @@ void RunEngine(VoodooEngine* Engine)
 	Engine->Renderer->Clear(Engine->ClearScreenColor);
 	Render(Engine);
 	Engine->Renderer->EndDraw();
-}
-
-float Interpolate(float Current, float Target, float DeltaTime, float Speed)
-{
-	return Current + Speed * (Target - Current) * DeltaTime;
 }
 
 void SetGameObjectLocation(GameObject* GameObjectToSet, SVector NewLocation)

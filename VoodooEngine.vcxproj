@@ -143,22 +143,34 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Animation.h" />
+    <ClInclude Include="Asset.h" />
     <ClInclude Include="BitmapComponent.h" />
+    <ClInclude Include="Button.h" />
     <ClInclude Include="CollisionComponent.h" />
     <ClInclude Include="GameObject.h" />
     <ClInclude Include="Interface.h" />
+    <ClInclude Include="Interpolate.h" />
+    <ClInclude Include="MovementComponent.h" />
     <ClInclude Include="Object.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="SColor.h" />
+    <ClInclude Include="SQuadCollisionParameters.h" />
+    <ClInclude Include="Text.h" />
+    <ClInclude Include="TimerHandle.h" />
     <ClInclude Include="TransformComponent.h" />
-    <ClInclude Include="Vector.h" />
+    <ClInclude Include="UpdateComponent.h" />
+    <ClInclude Include="SVector.h" />
     <ClInclude Include="VoodooEngine.h" />
     <ClInclude Include="VoodooEngineDLLExport.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Animation.cpp" />
     <ClCompile Include="BitmapComponent.cpp" />
+    <ClCompile Include="Button.cpp" />
+    <ClCompile Include="CollisionComponent.cpp" />
+    <ClCompile Include="Interpolate.cpp" />
     <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="Text.cpp" />
     <ClCompile Include="VoodooEngine.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "VoodooEngineDLLExport.h"
-#include "Vector.h"
+#include "SVector.h"
 
 // Contains animation info such as frame size/total frames and animation speed/state info 
 struct SAnimationParameters
