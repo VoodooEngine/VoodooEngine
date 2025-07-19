@@ -1,15 +1,14 @@
 #include "BitmapComponent.h"
 #include <wincodec.h>
 
-ID2D1Bitmap* BitmapCreationSetup(
-	ID2D1Bitmap* BitmapToCreate, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer)
+ID2D1Bitmap* SetupBitmap(ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer)
 {
 	// If bitmap is already created, 
 	// then release previous bitmap to avoid memory leak before making it nullptr
-	if (BitmapToCreate)
+	if (BitmapToSetup)
 	{
-		BitmapToCreate->Release();
-		BitmapToCreate = nullptr;
+		BitmapToSetup->Release();
+		BitmapToSetup = nullptr;
 	}
 
 	HRESULT Result;
@@ -55,7 +54,7 @@ ID2D1Bitmap* BitmapCreationSetup(
 		WICBitmapPaletteTypeCustom);
 
 	Renderer->CreateBitmapFromWicBitmap(
-		WicConverter, nullptr, &BitmapToCreate);
+		WicConverter, nullptr, &BitmapToSetup);
 
 	if (WicFactory)
 	{
@@ -74,13 +73,7 @@ ID2D1Bitmap* BitmapCreationSetup(
 		WicConverter->Release();
 	}
 
-	return BitmapToCreate;
-}
-
-ID2D1Bitmap* SetupBitmap(
-	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer)
-{
-	return BitmapCreationSetup(BitmapToSetup, FileName, Renderer);
+	return BitmapToSetup;
 }
 
 void SetupBitmapComponent(

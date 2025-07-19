@@ -21,7 +21,7 @@ public:
 	SBitmapParameters BitmapParams = {};
 };
 
-extern "C" ID2D1Bitmap* SetupBitmap(
+extern "C" VOODOOENGINE_API ID2D1Bitmap* SetupBitmap(
 	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer);
 
 extern "C" VOODOOENGINE_API void SetupBitmapComponent(
@@ -31,8 +31,8 @@ extern "C" VOODOOENGINE_API void SetupBitmapComponent(
 	SVector TextureAtlasOffsetMultiplierWidthHeight = {},
 	bool UseEntireTextureAtlasAsBitmapSource = true);
 
-extern "C" void SetBitmapSourceLocationX(
+extern "C" VOODOOENGINE_API void SetBitmapSourceLocationX(
 	BitmapComponent* BitmapToUpdate, int BitmapSourceWidth, int LocationOffsetMultiplier = 1);
 
-extern "C" void SetBitmapSourceLocationY(
+extern "C" VOODOOENGINE_API void SetBitmapSourceLocationY(
 	BitmapComponent* BitmapToUpdate, int BitmapSourceHeight, int LocationOffsetMultiplier = 1);

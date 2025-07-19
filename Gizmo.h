@@ -36,17 +36,17 @@ public:
 
 	void InitGizmo(VoodooEngine* Engine)
 	{
-		StaticEngineReference = Engine;
+		EnginePointer = Engine;
 		SEditorAssetPathList Asset;
-		GizmoBitmap.Bitmap = SetupBitmap(GizmoBitmap.Bitmap, Asset.Gizmo, Engine->Renderer);
+		GizmoBitmap.Bitmap = SetupBitmap(GizmoBitmap.Bitmap, Asset.Gizmo, EnginePointer->Renderer);
 		SetupBitmapComponent(&GizmoBitmap, GizmoBitmap.Bitmap);
-		RenderGizmoCollisionRect = Engine->DebugMode;
+		RenderGizmoCollisionRect = EnginePointer->DebugMode;
 		SetupGizmoCollisionTag();
 		SetupGizmoCollisionRect();
-		Engine->StoredEditorUpdateComponents.push_back(this);
-		Engine->StoredEditorBitmapComponents.push_back(&GizmoBitmap);
-		Engine->StoredEditorCollisionComponents.push_back(&GizmoCollision);
-		Engine->InterfaceObjects_Input.push_back(this);
+		EnginePointer->StoredEditorUpdateComponents.push_back(this);
+		EnginePointer->StoredEditorBitmapComponents.push_back(&GizmoBitmap);
+		EnginePointer->StoredEditorCollisionComponents.push_back(&GizmoCollision);
+		EnginePointer->InterfaceObjects_Input.push_back(this);
 	};
 
 	void InitGizmoLocation(SVector NewLocation)
@@ -70,23 +70,23 @@ public:
 
 	void SetMouseClickGizmoLocationOffset()
 	{
-		MouseClickLocationOffset.X = Location.X - StaticEngineReference->Mouse.Location.X;
-		MouseClickLocationOffset.Y = Location.Y - StaticEngineReference->Mouse.Location.Y;
+		MouseClickLocationOffset.X = Location.X - EnginePointer->Mouse.Location.X;
+		MouseClickLocationOffset.Y = Location.Y - EnginePointer->Mouse.Location.Y;
 	};
 
 	void UpdateMouseDragSnapLocationGizmo()
 	{
 		if (CanDragGizmo &&
-			StaticEngineReference->Mouse.PrimaryMousePressed)
+			EnginePointer->Mouse.PrimaryMousePressed)
 		{
 			Location.X =
-				(int)((StaticEngineReference->Mouse.Location.X +
-					MouseClickLocationOffset.X) / StaticEngineReference->LevelEditorGizmoSnapSize) *
-				StaticEngineReference->LevelEditorGizmoSnapSize;
+				(int)((EnginePointer->Mouse.Location.X +
+					MouseClickLocationOffset.X) / EnginePointer->LevelEditorGizmoSnapSize) *
+				EnginePointer->LevelEditorGizmoSnapSize;
 			Location.Y =
-				(int)((StaticEngineReference->Mouse.Location.Y +
-					MouseClickLocationOffset.Y) / StaticEngineReference->LevelEditorGizmoSnapSize) *
-				StaticEngineReference->LevelEditorGizmoSnapSize;
+				(int)((EnginePointer->Mouse.Location.Y +
+					MouseClickLocationOffset.Y) / EnginePointer->LevelEditorGizmoSnapSize) *
+				EnginePointer->LevelEditorGizmoSnapSize;
 		}
 	};
 
@@ -104,7 +104,7 @@ public:
 	{
 		if (CanDragGizmo &&
 			SelectedGameObject != nullptr &&
-			StaticEngineReference->Mouse.PrimaryMousePressed)
+			EnginePointer->Mouse.PrimaryMousePressed)
 		{
 			SVector NewLocation =
 			{ Location.X - GetGizmoOffsetLocation().X,
@@ -123,7 +123,7 @@ public:
 
 	bool IsMouseHoveringGizmo()
 	{
-		if (IsCollisionDetected(&GizmoCollision, &StaticEngineReference->Mouse.MouseCollider))
+		if (IsCollisionDetected(&GizmoCollision, &EnginePointer->Mouse.MouseCollider))
 		{
 			return true;
 		}
@@ -134,10 +134,10 @@ public:
 	bool IsMouseHoveringGameObject()
 	{
 		bool CollisionDetected = false;
-		for (int GameObjectIndex = 0; GameObjectIndex < StaticEngineReference->StoredGameObjects.size(); ++GameObjectIndex)
+		for (int GameObjectIndex = 0; GameObjectIndex < EnginePointer->StoredGameObjects.size(); ++GameObjectIndex)
 		{
-			if (IsCollisionDetected(&StaticEngineReference->Mouse.MouseCollider,
-				&StaticEngineReference->StoredGameObjects[GameObjectIndex]->DefaultGameObjectCollision))
+			if (IsCollisionDetected(&EnginePointer->Mouse.MouseCollider,
+				&EnginePointer->StoredGameObjects[GameObjectIndex]->DefaultGameObjectCollision))
 			{
 				CollisionDetected = true;
 			}
@@ -260,38 +260,38 @@ public:
 
 	void AssignMouseClickedGameObject()
 	{
-		StaticEngineReference->Mouse.MouseHoveredObject = nullptr;
+		EnginePointer->Mouse.MouseHoveredObject = nullptr;
 		std::vector<GameObject*> GameObjectsFound;
-		for (int GameObjectIndex = 0; GameObjectIndex < StaticEngineReference->StoredGameObjects.size(); ++GameObjectIndex)
+		for (int GameObjectIndex = 0; GameObjectIndex < EnginePointer->StoredGameObjects.size(); ++GameObjectIndex)
 		{
-			if (IsCollisionDetected(&StaticEngineReference->Mouse.MouseCollider,
-				&StaticEngineReference->StoredGameObjects[GameObjectIndex]->DefaultGameObjectCollision))
+			if (IsCollisionDetected(&EnginePointer->Mouse.MouseCollider,
+				&EnginePointer->StoredGameObjects[GameObjectIndex]->DefaultGameObjectCollision))
 			{
-				GameObjectsFound.push_back(StaticEngineReference->StoredGameObjects[GameObjectIndex]);
+				GameObjectsFound.push_back(EnginePointer->StoredGameObjects[GameObjectIndex]);
 			}
 		}
 
 		if (GameObjectsFound.size() > 1)
 		{
-			StaticEngineReference->Mouse.MouseHoveredObject = AssignSelectedGameObjectByRenderLayer(
+			EnginePointer->Mouse.MouseHoveredObject = AssignSelectedGameObjectByRenderLayer(
 				GameObjectsFound, SetCurrentRenderLayerPrioritization(GameObjectsFound));
 		}
 		else if (!GameObjectsFound.empty())
 		{
-			StaticEngineReference->Mouse.MouseHoveredObject = GameObjectsFound.at(0);
+			EnginePointer->Mouse.MouseHoveredObject = GameObjectsFound.at(0);
 		}
 	}
 
 	void Update(float DeltaTime)
 	{
-		if (StaticEngineReference->GameRunning)
+		if (EnginePointer->GameRunning)
 		{
 			return;
 		}
 
 		// Enables continous check for collision with game objects, 
 		// instead of once per overlap/end overlap
-		StaticEngineReference->Mouse.MouseCollider.IsOverlapped = false;
+		EnginePointer->Mouse.MouseCollider.IsOverlapped = false;
 
 		GizmoMouseHover = IsMouseHoveringGizmo();
 		GameObjectMouseHover = IsMouseHoveringGameObject();
@@ -324,9 +324,9 @@ public:
 
 	void AssignSelectedObject()
 	{
-		if (StaticEngineReference->Mouse.MouseHoveredObject != nullptr)
+		if (EnginePointer->Mouse.MouseHoveredObject != nullptr)
 		{
-			SelectedGameObject = (GameObject*)(StaticEngineReference->Mouse.MouseHoveredObject);
+			SelectedGameObject = (GameObject*)(EnginePointer->Mouse.MouseHoveredObject);
 		}
 	};
 
@@ -334,19 +334,19 @@ public:
 	{
 		CanDragGizmo = false;
 		SetGizmoState(true);
-		StaticEngineReference->Mouse.MouseHoveredObject = nullptr;
+		EnginePointer->Mouse.MouseHoveredObject = nullptr;
 		SelectedGameObject = nullptr;
 	};
 
 	void InterfaceEvent_Input(int Input, bool Pressed)
 	{
-		if (StaticEngineReference->GameRunning)
+		if (EnginePointer->GameRunning)
 		{
 			FullGizmoReset();
 			return;
 		}
 
-		if (StaticEngineReference->Mouse.PrimaryMousePressed)
+		if (EnginePointer->Mouse.PrimaryMousePressed)
 		{
 			SetMouseClickGizmoLocationOffset();
 
@@ -365,9 +365,9 @@ public:
 
 			CurrentClickedGameObject = nullptr;
 			if (GameObjectMouseHover &&
-				StaticEngineReference->Mouse.MouseHoveredObject != nullptr)
+				EnginePointer->Mouse.MouseHoveredObject != nullptr)
 			{
-				CurrentClickedGameObject = (GameObject*)(StaticEngineReference->Mouse.MouseHoveredObject);
+				CurrentClickedGameObject = (GameObject*)(EnginePointer->Mouse.MouseHoveredObject);
 			}
 
 			if (!GizmoMouseHover &&
@@ -382,5 +382,5 @@ public:
 	};
 
 private:
-	VoodooEngine* StaticEngineReference = nullptr;
+	VoodooEngine* EnginePointer = nullptr;
 };

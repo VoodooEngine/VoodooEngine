@@ -335,7 +335,7 @@ public:
 		}
 	}
 
-	static void SetMouseState(bool Show, VoodooEngine* Engine)
+	static void SetMouseState(VoodooEngine* Engine, bool Show)
 	{
 		if (Show)
 		{
@@ -681,13 +681,13 @@ public:
 };
 
 // Print debug text to screen
-extern "C" VOODOOENGINE_API void ScreenPrint(std::string DebugText, VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void ScreenPrint(VoodooEngine* Engine, std::string DebugText);
 
 // Set the frame rate limit per second
 extern "C" VOODOOENGINE_API void SetFPSLimit(VoodooEngine* Engine, float FPSLimit);
 
 // Pause/unpause game
-extern "C" VOODOOENGINE_API void PauseGame(bool SetGamePaused, VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API void PauseGame(VoodooEngine* Engine, bool SetGamePaused);
 
 // includes that are dependent of engine class 
 // (the engine class needs to be created above first before includes)
@@ -735,7 +735,7 @@ extern "C" VOODOOENGINE_API void SetCharacterLocation(Character* CharacterToSet,
 // Built in collision detection is provided,
 // if you set up the "QuadCollisionParameters" struct within "MovementComponent".
 // Returns new movement location
-extern "C" VOODOOENGINE_API SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine);
+extern "C" VOODOOENGINE_API SVector AddMovementInput(VoodooEngine* Engine, Character* CharacterToAddMovement);
 
 // Add AI movement to game object 
 // (will inherit from "MovementComponent" and make use of "AddMovementInput" function)

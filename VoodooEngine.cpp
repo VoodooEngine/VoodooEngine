@@ -238,7 +238,7 @@ void CreateText(VoodooEngine* Engine, Button* ButtonReference, SButtonParameters
 	}
 }
 
-void ScreenPrint(std::string DebugText, VoodooEngine* Engine)
+void ScreenPrint(VoodooEngine* Engine, std::string DebugText)
 {
 	if (!Engine)
 	{
@@ -571,12 +571,15 @@ void Update(VoodooEngine* Engine)
 				Engine->StoredUpdateComponents[i]->Update(Engine->DeltaTime);
 			}
 		}
-	}
 
-	// Only used for timers
-	for (int i = 0; i < Engine->StoredTimerUpdateComponents.size(); ++i)
-	{
-		Engine->StoredTimerUpdateComponents[i]->Update(Engine->DeltaTime);
+		// Only used for timers
+		for (int i = 0; i < Engine->StoredTimerUpdateComponents.size(); ++i)
+		{
+			if (!Engine->StoredTimerUpdateComponents[i]->Paused)
+			{
+				Engine->StoredTimerUpdateComponents[i]->Update(Engine->DeltaTime);
+			}
+		}
 	}
 }
 
@@ -608,7 +611,7 @@ SVector GetComponentRelativeLocation(
 	return CurrentComponentLocation;
 }
 
-void PauseGame(bool SetGamePaused, VoodooEngine* Engine)
+void PauseGame(VoodooEngine* Engine, bool SetGamePaused)
 {
 	for (int i = 0; i < Engine->StoredUpdateComponents.size(); ++i)
 	{
@@ -625,11 +628,11 @@ bool SetDebugMode()
 	{
 		while (getline(File, String))
 		{
-			if (String == "DebugModeTrue")
+			if (String == "DebugMode = TRUE")
 			{
 				NewDebugMode = true;
 			}
-			else if (String == "DebugModeFalse")
+			else if (String == "DebugMode = FALSE")
 			{
 				NewDebugMode = false;
 			}
@@ -649,11 +652,11 @@ bool SetEditorMode()
 	{
 		while (getline(File, String))
 		{
-			if (String == "EditorModeTrue")
+			if (String == "EditorMode = TRUE")
 			{
 				NewEditorMode = true;
 			}
-			else if (String == "EditorModeFalse")
+			else if (String == "EditorMode = FALSE")
 			{
 				NewEditorMode = false;
 			}
@@ -1031,7 +1034,7 @@ void SetCharacterLocation(Character* CharacterToSet, SVector NewLocation)
 	}
 }
 
-SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine)
+SVector AddMovementInput(VoodooEngine* Engine, Character* CharacterToAddMovement)
 {	
 	// Default new location as the location of the component owner
 	SVector NewLocation = CharacterToAddMovement->Location;
@@ -1085,7 +1088,14 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 		// Collision detected left
 		if (IsCollisionDetected(
 			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionLeft, 
-			Engine->StoredCollisionComponents[i]))
+			Engine->StoredCollisionComponents[i]) &&
+			
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionRight &&
+			Engine->StoredCollisionComponents[i] != 
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionUp &&
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionDown)
 		{
 			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitLeft = true;
 			CharacterToAddMovement->MoveComp.WallLeftHitCollisionLocation =
@@ -1094,7 +1104,14 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 		// Collision detected right
 		if (IsCollisionDetected(
 			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionRight,
-			Engine->StoredCollisionComponents[i]))
+			Engine->StoredCollisionComponents[i]) &&
+
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionLeft &&
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionUp &&
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionDown)
 		{
 			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitRight = true;
 			CharacterToAddMovement->MoveComp.WallRightHitCollisionLocation =
@@ -1103,7 +1120,14 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 		// Collision detected up
 		if (IsCollisionDetected(
 			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionUp, 
-			Engine->StoredCollisionComponents[i]))
+			Engine->StoredCollisionComponents[i]) &&
+
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionDown &&
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionLeft &&
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionRight)
 		{
 			CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp = true;
 			CharacterToAddMovement->MoveComp.RoofHitCollisionLocation =
@@ -1112,13 +1136,24 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 		// Collision detected down
 		if (IsCollisionDetected(
 			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionDown, 
-			Engine->StoredCollisionComponents[i]))
+			Engine->StoredCollisionComponents[i]) &&
+
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionUp &&
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionLeft &&
+			Engine->StoredCollisionComponents[i] !=
+			&CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionRight)
 		{
 			if (!CharacterToAddMovement->MoveComp.IsRequestingJump())
 			{
 				CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitDown = true;
+
+				// Cache the collision location of the collided object,
+				// this will be used later to determine the "snap" location of the character
 				CharacterToAddMovement->MoveComp.GroundHitCollisionLocation =
-					Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
+					Engine->StoredCollisionComponents[i]->ComponentLocation.Y -
+					Engine->StoredCollisionComponents[i]->CollisionRect.Y;
 			}
 		}
 	}
@@ -1140,7 +1175,7 @@ SVector AddMovementInput(Character* CharacterToAddMovement, VoodooEngine* Engine
 			!CharacterToAddMovement->MoveComp.QuadCollisionParams.CollisionHitUp &&
 			!CharacterToAddMovement->MoveComp.IsRequestingJump())
 		{
-			NewLocation.Y = 
+			NewLocation.Y =
 				CharacterToAddMovement->MoveComp.GroundHitCollisionLocation - 
 				CharacterToAddMovement->GameObjectDimensions.Y;
 		}

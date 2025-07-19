@@ -54,54 +54,54 @@ enum EMenuType
 public:
 	VoodooLevelEditor(VoodooEngine* Engine)
 	{
-		StaticEngineReference = Engine;
+		EnginePointer = Engine;
 
 		// Add level editor update function to be called every frame
-		StaticEngineReference->StoredEditorUpdateComponents.push_back(this);
+		EnginePointer->StoredEditorUpdateComponents.push_back(this);
 
 		// Add input callback for level editor
-		StaticEngineReference->InterfaceObjects_Input.push_back(this);
+		EnginePointer->InterfaceObjects_Input.push_back(this);
 
 		// Create level editor UI
 		LevelEditorUITop.Bitmap =
-			SetupBitmap(LevelEditorUITop.Bitmap, Asset.LevelEditorUITop, StaticEngineReference->Renderer);
+			SetupBitmap(LevelEditorUITop.Bitmap, Asset.LevelEditorUITop, EnginePointer->Renderer);
 		SetupBitmapComponent(&LevelEditorUITop, LevelEditorUITop.Bitmap);
 
 		LevelEditorUIOverlay.Bitmap =
-			SetupBitmap(LevelEditorUIOverlay.Bitmap, Asset.LevelEditorUIOverlay, StaticEngineReference->Renderer);
+			SetupBitmap(LevelEditorUIOverlay.Bitmap, Asset.LevelEditorUIOverlay, EnginePointer->Renderer);
 		SetupBitmapComponent(&LevelEditorUIOverlay, LevelEditorUIOverlay.Bitmap);
 
-		StaticEngineReference->StoredEditorBitmapComponents.push_back(&LevelEditorUIOverlay);
-		StaticEngineReference->StoredEditorBitmapComponents.push_back(&LevelEditorUITop);
+		EnginePointer->StoredEditorBitmapComponents.push_back(&LevelEditorUIOverlay);
+		EnginePointer->StoredEditorBitmapComponents.push_back(&LevelEditorUITop);
 
 		// Create all the clickable level editor buttons
 		CreatePlayLevelButton();
 		OpenLevelButton = CreateButton(
-			StaticEngineReference, OpenLevelButton, TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL,
+			EnginePointer, OpenLevelButton, TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL,
 			TwoSided, "open_level", { BUTTON_LOC_X_OPENLEVEL, BUTTON_LOC_Y_OPENLEVEL },
 			Asset.LevelEditorButtonW140);
 		SaveLevelButton = CreateButton(
-			StaticEngineReference, SaveLevelButton, TAG_LEVEL_EDITOR_BUTTON_SAVELEVEL,
+			EnginePointer, SaveLevelButton, TAG_LEVEL_EDITOR_BUTTON_SAVELEVEL,
 			TwoSided, "save_level", { BUTTON_LOC_X_SAVELEVEL, BUTTON_LOC_Y_SAVELEVEL },
 			Asset.LevelEditorButtonW140);
 		PreviousButton = CreateButton(
-			StaticEngineReference, PreviousButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_PREVIOUS,
+			EnginePointer, PreviousButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_PREVIOUS,
 			TwoSided, "previous", { BUTTON_LOC_X_PREVIOUS, BUTTON_LOC_Y_NEXT_PREVIOUS },
 			Asset.LevelEditorButtonW140);
 		NextButton = CreateButton(
-			StaticEngineReference, NextButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_NEXT,
+			EnginePointer, NextButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_ASSET_LIST_NEXT,
 			TwoSided, "next", { BUTTON_LOC_X_NEXT, BUTTON_LOC_Y_NEXT_PREVIOUS },
 			Asset.LevelEditorButtonW140);
 		AssetBrowserButton = CreateButton(
-			StaticEngineReference, AssetBrowserButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_ASSETS,
+			EnginePointer, AssetBrowserButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_ASSETS,
 			TwoSided, "assetbrowser", { BUTTON_LOC_X_ASSETBROWSER, BUTTON_LOC_Y_ASSETBROWSER },
 			Asset.LevelEditorButtonW160);
 		RenderLayerSelectionButton = CreateButton(
-			StaticEngineReference, RenderLayerSelectionButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_RENDERLAYERS,
+			EnginePointer, RenderLayerSelectionButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_RENDERLAYERS,
 			TwoSided, "renderlayer", { BUTTON_LOC_X_RENDERLAYER, BUTTON_LOC_Y_RENDERLAYER },
 			Asset.LevelEditorButtonW160);
 		ViewModeSelectionButton = CreateButton(
-			StaticEngineReference, ViewModeSelectionButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_VIEWMODE,
+			EnginePointer, ViewModeSelectionButton, TAG_LEVEL_EDITOR_BUTTON_SELECT_MENU_VIEWMODE,
 			TwoSided, "viewmode", { BUTTON_LOC_X_VIEWMODE, BUTTON_LOC_Y_VIEWMODE },
 			Asset.LevelEditorButtonW140);
 
@@ -137,7 +137,7 @@ public:
 	};
 	void CreateGizmo()
 	{
-		TransformGizmo.InitGizmo(StaticEngineReference);
+		TransformGizmo.InitGizmo(EnginePointer);
 		TransformGizmo.InitGizmoLocation({ 1000, 500 });
 		TransformGizmo.SetGizmoState(true);
 
@@ -146,14 +146,14 @@ public:
 	void CreatePlayLevelButton()
 	{
 		PlayLevelButton = CreateButton(
-			StaticEngineReference, PlayLevelButton, TAG_LEVEL_EDITOR_BUTTON_PLAYLEVEL,
+			EnginePointer, PlayLevelButton, TAG_LEVEL_EDITOR_BUTTON_PLAYLEVEL,
 			TwoSided, "play_level", { BUTTON_LOC_X_PLAYLEVEL, BUTTON_LOC_Y_PLAYLEVEL },
 			Asset.LevelEditorButtonW140);
 	};
 	void CreateStopPlayButton()
 	{
 		StopPlayButton = CreateButton(
-			StaticEngineReference, StopPlayButton, TAG_LEVEL_EDITOR_BUTTON_STOPPLAY,
+			EnginePointer, StopPlayButton, TAG_LEVEL_EDITOR_BUTTON_STOPPLAY,
 			TwoSided, "stop_play", { BUTTON_LOC_X_PLAYLEVEL, BUTTON_LOC_Y_PLAYLEVEL },
 			Asset.LevelEditorButtonActivateDeactivateW140);
 
@@ -200,7 +200,7 @@ public:
 
 			Button* AssetButton = nullptr;
 			AssetButton = CreateButton(
-				StaticEngineReference, AssetButton, CurrentAssetID, AssetButtonThumbnail, "",
+				EnginePointer, AssetButton, CurrentAssetID, AssetButtonThumbnail, "",
 				{ ASSET_SELECTION_BUTTON_LOC_X_ORIGIN + LocXOffset,
 				(ASSET_SELECTION_BUTTON_LOC_Y_ORIGIN + LocYOffset) },
 				CurrentStoredButtonAssets[i].AssetParams.EditorAssetButtonThumbnailFilePath,
@@ -218,11 +218,11 @@ public:
 		SEditorAssetPathList AssetList;
 		SVector OriginLocation = { 1620, 110 };
 		float OffsetLocationY = 50;
-		for (int i = 0; i < StaticEngineReference->StoredLevelEditorRenderLayers.size(); ++i)
+		for (int i = 0; i < EnginePointer->StoredLevelEditorRenderLayers.size(); ++i)
 		{
-			auto Iterator = StaticEngineReference->StoredLevelEditorRenderLayers.find(i);
+			auto Iterator = EnginePointer->StoredLevelEditorRenderLayers.find(i);
 			Button* EyeIcon = nullptr;
-			EyeIcon = CreateButton(StaticEngineReference, EyeIcon, Iterator->first,
+			EyeIcon = CreateButton(EnginePointer, EyeIcon, Iterator->first,
 				EButtonType::TwoSided, "", OriginLocation, AssetList.RenderLayerEyeIcon);
 			RenderLayerVisibilityEyeIconButtons.push_back(EyeIcon);
 
@@ -231,12 +231,12 @@ public:
 	};
 	void DeletePlayLevelButton()
 	{
-		PlayLevelButton = DeleteButton(StaticEngineReference, PlayLevelButton);
+		PlayLevelButton = DeleteButton(EnginePointer, PlayLevelButton);
 		HoveredButtonID = TAG_LEVEL_EDITOR_BUTTON_ID_NONE;
 	};
 	void DeleteStopPlayButton()
 	{
-		StopPlayButton = DeleteButton(StaticEngineReference, StopPlayButton);
+		StopPlayButton = DeleteButton(EnginePointer, StopPlayButton);
 		HoveredButtonID = TAG_LEVEL_EDITOR_BUTTON_ID_NONE;
 	};
 	void DeleteAssetButtons()
@@ -258,13 +258,13 @@ public:
 				CurrentStoredButtonAssets.erase(std::remove(CurrentStoredButtonAssets.begin(),
 					CurrentStoredButtonAssets.end(), AssetToDelete));
 
-				StaticEngineReference->StoredButtonBitmapComponents.erase(std::remove(
-					StaticEngineReference->StoredButtonBitmapComponents.begin(),
-					StaticEngineReference->StoredButtonBitmapComponents.end(), &AssetToDelete.AssetButton->ButtonBitmap));
+				EnginePointer->StoredButtonBitmapComponents.erase(std::remove(
+					EnginePointer->StoredButtonBitmapComponents.begin(),
+					EnginePointer->StoredButtonBitmapComponents.end(), &AssetToDelete.AssetButton->ButtonBitmap));
 
-				StaticEngineReference->StoredEditorCollisionComponents.erase(std::remove(
-					StaticEngineReference->StoredEditorCollisionComponents.begin(),
-					StaticEngineReference->StoredEditorCollisionComponents.end(), &AssetToDelete.AssetButton->ButtonCollider));
+				EnginePointer->StoredEditorCollisionComponents.erase(std::remove(
+					EnginePointer->StoredEditorCollisionComponents.begin(),
+					EnginePointer->StoredEditorCollisionComponents.end(), &AssetToDelete.AssetButton->ButtonCollider));
 
 				delete AssetToDelete.AssetButton;
 			}
@@ -325,7 +325,7 @@ public:
 	{
 		if (Hide)
 		{
-			if (!StaticEngineReference->GameRunning)
+			if (!EnginePointer->GameRunning)
 			{
 				MenuSelectedBeforeHidden = CurrentMenuTypeActivated;
 			}
@@ -335,14 +335,14 @@ public:
 			LevelEditorUITop.BitmapParams.BitmapSetToNotRender = true;
 			LevelEditorUIOverlay.BitmapParams.BitmapSetToNotRender = true;
 			UpdateAllButtonsState(EButtonState::Hidden);
-			StaticEngineReference->SetMouseState(false, StaticEngineReference);
+			EnginePointer->SetMouseState(EnginePointer, false);
 		}
 		else if (!Hide)
 		{
-			StaticEngineReference->SetMouseState(true, StaticEngineReference);
+			EnginePointer->SetMouseState(EnginePointer, true);
 			LevelEditorVisible = true;
 			LevelEditorUITop.BitmapParams.BitmapSetToNotRender = false;
-			if (!StaticEngineReference->GameRunning)
+			if (!EnginePointer->GameRunning)
 			{
 				UpdateAllButtonsState(EButtonState::Default);
 			}
@@ -360,9 +360,9 @@ public:
 			HideRenderLayerUIText = true;
 		}
 
-		for (int i = 0; i < StaticEngineReference->StoredLevelEditorRenderLayers.size(); ++i)
+		for (int i = 0; i < EnginePointer->StoredLevelEditorRenderLayers.size(); ++i)
 		{
-			auto Iterator = StaticEngineReference->StoredLevelEditorRenderLayers.find(i);
+			auto Iterator = EnginePointer->StoredLevelEditorRenderLayers.find(i);
 			Iterator->second.HideText = HideRenderLayerUIText;
 		}
 	};
@@ -394,23 +394,23 @@ public:
 	};
 	void SetGameObjectsVisibilityBasedOnRenderLayer(bool EnableRenderLayer, int RenderLayer)
 	{
-		for (int i = 0; i < StaticEngineReference->StoredGameObjects.size(); ++i)
+		for (int i = 0; i < EnginePointer->StoredGameObjects.size(); ++i)
 		{
-			if (StaticEngineReference->StoredGameObjects[i]->GameObjectBitmap.BitmapParams.RenderLayer ==
+			if (EnginePointer->StoredGameObjects[i]->GameObjectBitmap.BitmapParams.RenderLayer ==
 				RenderLayer)
 			{
 				if (EnableRenderLayer)
 				{
-					StaticEngineReference->StoredGameObjects[i]->
+					EnginePointer->StoredGameObjects[i]->
 						GameObjectBitmap.BitmapParams.BitmapSetToNotRender = false;
-					StaticEngineReference->StoredGameObjects[i]->
+					EnginePointer->StoredGameObjects[i]->
 						DefaultGameObjectCollision.NoCollision = false;
 				}
 				else
 				{
-					StaticEngineReference->StoredGameObjects[i]->
+					EnginePointer->StoredGameObjects[i]->
 						GameObjectBitmap.BitmapParams.BitmapSetToNotRender = true;
-					StaticEngineReference->StoredGameObjects[i]->
+					EnginePointer->StoredGameObjects[i]->
 						DefaultGameObjectCollision.NoCollision = true;
 				}
 			}
@@ -427,7 +427,7 @@ public:
 		int BitmapWidth =
 			RenderLayerVisibilityEyeIconButtons.at(
 				HoveredButtonID)->ButtonBitmap.Bitmap->GetSize().width / 2;
-		auto Iterator = StaticEngineReference->StoredLevelEditorRenderLayers.find(HoveredButtonID);
+		auto Iterator = EnginePointer->StoredLevelEditorRenderLayers.find(HoveredButtonID);
 		if (Iterator->second.TextRenderType == ETextBrushColorType::BlackBrush)
 		{
 			// Show "on" eye icon bitmap
@@ -475,7 +475,7 @@ public:
 			SetButtonState(ViewModeSelectionButton, EButtonState::Default);
 			SetAllRenderLayerEyeIconButtonsState(EButtonState::Hidden);
 			SetAllRenderLayerUITextVisibility(false);
-			if (!StaticEngineReference->GameRunning)
+			if (!EnginePointer->GameRunning)
 			{
 				LevelEditorUIOverlay.BitmapParams.BitmapSetToNotRender = false;
 			}
@@ -490,7 +490,7 @@ public:
 			SetButtonState(ViewModeSelectionButton, EButtonState::Default);
 			SetAllRenderLayerEyeIconButtonsState(EButtonState::Default);
 			SetAllRenderLayerUITextVisibility(true);
-			if (!StaticEngineReference->GameRunning)
+			if (!EnginePointer->GameRunning)
 			{
 				LevelEditorUIOverlay.BitmapParams.BitmapSetToNotRender = false;
 			}
@@ -526,12 +526,12 @@ public:
 			UpdateSaveState(true);
 			break;
 		case TAG_LEVEL_EDITOR_BUTTON_OPENLEVEL:
-			OpenLevelFile(StaticEngineReference);
+			OpenLevelFile(EnginePointer);
 			UpdateSaveState(false);
 			break;
 		case TAG_LEVEL_EDITOR_BUTTON_PLAYLEVEL:
 			DeletePlayLevelButton();
-			StaticEngineReference->StartGame();
+			EnginePointer->StartGame();
 			TransformGizmo.SetGizmoState(true);
 			MenuSelectedBeforeHidden = CurrentMenuTypeActivated;
 			UpdateAllButtonsState(EButtonState::Hidden);
@@ -540,7 +540,7 @@ public:
 		case TAG_LEVEL_EDITOR_BUTTON_STOPPLAY:
 			DeleteStopPlayButton();
 			CreatePlayLevelButton();
-			StaticEngineReference->EndGame();
+			EnginePointer->EndGame();
 			TransformGizmo.FullGizmoReset();
 			UpdateAllButtonsState(EButtonState::Default);
 			SetMenuVisible(MenuSelectedBeforeHidden);
@@ -573,13 +573,13 @@ public:
 				// In asset browser mode, 
 				// when asset button is clicked a game object based on ID is spawned
 			case VoodooLevelEditor::AssetBrowser:
-				if (StaticEngineReference->FunctionPointer_LoadGameObjects)
+				if (EnginePointer->FunctionPointer_LoadGameObjects)
 				{
 					// When a game object is selected to spawn from asset menu,
 					// pass an empty vector since it is only used for storing gameobjects to levels, 
 					// when a level is loaded
 					std::vector<GameObject*> EmptyVector;
-					StaticEngineReference->FunctionPointer_LoadGameObjects(
+					EnginePointer->FunctionPointer_LoadGameObjects(
 						HoveredButtonID,
 						{ ASSET_SELECTION_SPAWN_LOCATION_X, ASSET_SELECTION_SPAWN_LOCATION_Y },
 						EmptyVector);
@@ -618,11 +618,11 @@ public:
 		}
 
 		// Delete selected game object
-		if (StaticEngineReference->GameRunning == false &&
+		if (EnginePointer->GameRunning == false &&
 			Input == VK_DELETE &&
 			TransformGizmo.SelectedGameObject != nullptr)
 		{
-			StaticEngineReference->DeleteGameObject(TransformGizmo.SelectedGameObject);
+			EnginePointer->DeleteGameObject(TransformGizmo.SelectedGameObject);
 			TransformGizmo.SelectedGameObject = nullptr;
 			TransformGizmo.SetGizmoState(true);
 			UpdateSaveState(false);
@@ -633,11 +633,11 @@ public:
 			return;
 		}
 
-		if (StaticEngineReference->Mouse.PrimaryMousePressed)
+		if (EnginePointer->Mouse.PrimaryMousePressed)
 		{
 			OnButtonPressed();
 		}
-		else if (!StaticEngineReference->Mouse.PrimaryMousePressed)
+		else if (!EnginePointer->Mouse.PrimaryMousePressed)
 		{
 			if (AssetBrowserVisible)
 			{
@@ -653,7 +653,7 @@ public:
 			return;
 		}
 
-		BroadcastCollision(this, &ButtonToUpdate->ButtonCollider, &StaticEngineReference->Mouse.MouseCollider);
+		BroadcastCollision(this, &ButtonToUpdate->ButtonCollider, &EnginePointer->Mouse.MouseCollider);
 	};
 	void UpdateRenderLayerEyeIconButtonsCollisionCheck()
 	{
@@ -664,7 +664,7 @@ public:
 	};
 	void Update(float DeltaTime)
 	{
-		if (StaticEngineReference == nullptr)
+		if (EnginePointer == nullptr)
 		{
 			return;
 		}
@@ -689,7 +689,7 @@ public:
 
 			BroadcastCollision(
 				this, &CurrentStoredButtonAssets[i].AssetButton->ButtonCollider,
-				&StaticEngineReference->Mouse.MouseCollider);
+				&EnginePointer->Mouse.MouseCollider);
 		}
 	};
 	void OnBeginOverlap(int SenderCollisionTag, int TargetCollisionTag, Object* Target)
@@ -711,7 +711,7 @@ private:
 		int Max = ASSET_SELECTION_GRID_MAXNUM_DISPLAYED;
 	};
 
-	VoodooEngine* StaticEngineReference = nullptr;
+	VoodooEngine* EnginePointer = nullptr;
 	int HoveredButtonID = TAG_LEVEL_EDITOR_BUTTON_ID_NONE;
 	SEditorAssetPathList Asset;
 	SAssetIndex AssetIndexDisplayed;
@@ -761,14 +761,14 @@ private:
 		AssetButton.AssetParams.AssetButtonThumbnailTextureAtlasOffsetMultiplierY =
 			AssetButtonThumbnailTextureAltasOffsetMultiplierY;
 		AssetButton.AssetParams.CreateDefaultAssetCollision = CreateAssetCollision;
-		StaticEngineReference->StoredButtonAssets.push_back(AssetButton);
+		EnginePointer->StoredButtonAssets.push_back(AssetButton);
 	};
 	void AddAssetContentForLevelEditor()
 	{
 		// Iterate over all stored game objects in the game and add them as asset buttons
-		for (int i = 0; i < StaticEngineReference->StoredGameObjectIDs.size(); ++i)
+		for (int i = 0; i < EnginePointer->StoredGameObjectIDs.size(); ++i)
 		{
-			auto Iterator = StaticEngineReference->StoredGameObjectIDs.find(i);
+			auto Iterator = EnginePointer->StoredGameObjectIDs.find(i);
 
 			AddLevelEditorAssetButton(
 				Iterator->first,
@@ -780,9 +780,9 @@ private:
 
 		// When above iteration is done, store all the buttons in the level editor,
 		// which will then be used as clickable buttons
-		for (int i = 0; i < StaticEngineReference->StoredButtonAssets.size(); ++i)
+		for (int i = 0; i < EnginePointer->StoredButtonAssets.size(); ++i)
 		{
-			CurrentStoredButtonAssets.push_back(StaticEngineReference->StoredButtonAssets[i]);
+			CurrentStoredButtonAssets.push_back(EnginePointer->StoredButtonAssets[i]);
 		}
 	};
 	bool ReachedLimitGridPrevious()
@@ -855,7 +855,7 @@ private:
 	};
 	void SaveLevelFile()
 	{
-		StaticEngineReference->SaveGameObjectsToFile(StaticEngineReference->FileName);
+		EnginePointer->SaveGameObjectsToFile(EnginePointer->FileName);
 	}
 	void OpenLevelFile(VoodooEngine* Engine)
 	{
