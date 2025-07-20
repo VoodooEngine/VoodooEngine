@@ -1,7 +1,46 @@
 #include "BitmapComponent.h"
 #include <wincodec.h>
 
-ID2D1Bitmap* SetupBitmap(ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer)
+HRESULT SetupWicConverter(
+	IWICImagingFactory* WicFactory, 
+	IWICBitmapFrameDecode* DecoderFrame, 
+	IWICFormatConverter* WicConverter, 
+	bool FlipBitmap)
+{
+	HRESULT Result;
+	IWICBitmapSource* Source = nullptr;
+
+	if (!FlipBitmap)
+	{
+		Source = DecoderFrame;
+	}
+
+	IWICBitmapFlipRotator* ImageFlip = nullptr;
+	if (FlipBitmap)
+	{
+		Result = WicFactory->CreateBitmapFlipRotator(&ImageFlip);
+		Result = ImageFlip->Initialize(DecoderFrame, WICBitmapTransformFlipHorizontal);
+
+		Source = ImageFlip;
+	}
+
+	Result = WicConverter->Initialize(
+		Source,
+		GUID_WICPixelFormat32bppPBGRA,
+		WICBitmapDitherTypeNone,
+		nullptr,
+		0,
+		WICBitmapPaletteTypeCustom);
+
+	if (ImageFlip)
+	{
+		ImageFlip->Release();
+	}
+
+	return Result;
+}
+
+ID2D1Bitmap* SetupBitmap(ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer, bool FlipBitmap)
 {
 	// If bitmap is already created, 
 	// then release previous bitmap to avoid memory leak before making it nullptr
@@ -44,14 +83,7 @@ ID2D1Bitmap* SetupBitmap(ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID
 	IWICFormatConverter* WicConverter = nullptr;
 	Result = WicFactory->CreateFormatConverter(&WicConverter);
 
-	// Setup the WIC bitmap converter
-	Result = WicConverter->Initialize(
-		DecoderFrame,
-		GUID_WICPixelFormat32bppPBGRA,
-		WICBitmapDitherTypeNone,
-		nullptr,
-		0,
-		WICBitmapPaletteTypeCustom);
+	Result = SetupWicConverter(WicFactory, DecoderFrame, WicConverter, FlipBitmap);
 
 	Renderer->CreateBitmapFromWicBitmap(
 		WicConverter, nullptr, &BitmapToSetup);
@@ -80,7 +112,7 @@ void SetupBitmapComponent(
 	BitmapComponent* BitmapComponentToSetup,
 	ID2D1Bitmap* TextureAtlas,
 	SVector TextureAtlasWidthHeight,
-	SVector TextureAtlasOffsetMultiplierWidthHeight,
+	int TextureAtlasOffsetMultiplierHeight,
 	bool UseEntireTextureAtlasAsBitmapSource)
 {
 	BitmapComponentToSetup->Bitmap = TextureAtlas;
@@ -111,11 +143,12 @@ void SetupBitmapComponent(
 		SetBitmapSourceLocationX(
 			BitmapComponentToSetup,
 			TextureAtlasWidthHeight.X,
-			TextureAtlasOffsetMultiplierWidthHeight.X);
+			// Constant 1 since X axis offset of texture atlas is not supported
+			1);
 		SetBitmapSourceLocationY(
 			BitmapComponentToSetup,
 			TextureAtlasWidthHeight.Y,
-			TextureAtlasOffsetMultiplierWidthHeight.Y);
+			TextureAtlasOffsetMultiplierHeight);
 	}
 }
 

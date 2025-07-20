@@ -203,7 +203,7 @@ public:
 				EnginePointer, AssetButton, CurrentAssetID, AssetButtonThumbnail, "",
 				{ ASSET_SELECTION_BUTTON_LOC_X_ORIGIN + LocXOffset,
 				(ASSET_SELECTION_BUTTON_LOC_Y_ORIGIN + LocYOffset) },
-				CurrentStoredButtonAssets[i].AssetParams.EditorAssetButtonThumbnailFilePath,
+				CurrentStoredButtonAssets[i].AssetParams.AssetFilePath.c_str(),
 				CurrentStoredButtonAssets[i].AssetParams.AssetButtonThumbnailTextureAtlasHeight,
 				CurrentStoredButtonAssets[i].AssetParams.AssetButtonThumbnailTextureAtlasOffsetMultiplierY);
 
@@ -749,13 +749,13 @@ private:
 	};
 	void AddLevelEditorAssetButton(
 		int AssetID, bool CreateAssetCollision,
-		const wchar_t* AssetPath,
+		std::wstring AssetPath,
 		float AssetButtonThumbnailTextureAtlasHeight,
 		float AssetButtonThumbnailTextureAltasOffsetMultiplierY)
 	{
 		SAssetButton AssetButton;
 		AssetButton.AssetID = AssetID;
-		AssetButton.AssetParams.EditorAssetButtonThumbnailFilePath = AssetPath;
+		AssetButton.AssetParams.AssetFilePath = AssetPath;
 		AssetButton.AssetParams.AssetButtonThumbnailTextureAtlasHeight =
 			AssetButtonThumbnailTextureAtlasHeight;
 		AssetButton.AssetParams.AssetButtonThumbnailTextureAtlasOffsetMultiplierY =
@@ -773,7 +773,7 @@ private:
 			AddLevelEditorAssetButton(
 				Iterator->first,
 				Iterator->second.CreateDefaultAssetCollision,
-				Iterator->second.EditorAssetButtonThumbnailFilePath,
+				Iterator->second.AssetFilePath,
 				Iterator->second.AssetButtonThumbnailTextureAtlasHeight,
 				Iterator->second.AssetButtonThumbnailTextureAtlasOffsetMultiplierY);
 		}

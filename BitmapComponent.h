@@ -2,6 +2,7 @@
 
 #include "VoodooEngineDLLExport.h"
 #include "TransformComponent.h"
+#include <string>
 #include <d2d1.h>
 
 struct SBitmapParameters
@@ -22,13 +23,13 @@ public:
 };
 
 extern "C" VOODOOENGINE_API ID2D1Bitmap* SetupBitmap(
-	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer);
+	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer, bool FlipBitmap = false);
 
 extern "C" VOODOOENGINE_API void SetupBitmapComponent(
 	BitmapComponent* BitmapComponentToSetup,
 	ID2D1Bitmap* TextureAtlas,
 	SVector TextureAtlasWidthHeight = {},
-	SVector TextureAtlasOffsetMultiplierWidthHeight = {},
+	int TextureAtlasOffsetMultiplierHeight = 1,
 	bool UseEntireTextureAtlasAsBitmapSource = true);
 
 extern "C" VOODOOENGINE_API void SetBitmapSourceLocationX(

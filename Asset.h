@@ -3,10 +3,12 @@
 #include "BitmapComponent.h"
 #include <string>
 
+// Contains information about the texture atlas and its file path
 struct SAssetTextureAtlas
 {
 	BitmapComponent TextureAtlas;
-	std::wstring TextureAtlasPath;
+	const wchar_t* TextureAtlasPath;
+	std::wstring TextureAtlasPathString;
 };
 
 // Contains all the information for game assets
@@ -14,12 +16,12 @@ struct SAssetParameters
 {
 	ID2D1Bitmap* TextureAtlas = nullptr;
 	SVector TextureAtlasWidthHeight = { 0, 0 };
-	SVector TextureAtlasOffsetMultiplierWidthHeight = { 1, 1 };
+	int TextureAtlasOffsetMultiplierHeight = 1;
 	int RenderLayer = 0;
 	bool CreateDefaultAssetCollision = false;
 
-	// Default to asset button empty thumbnail, can be overriden
-	const wchar_t* EditorAssetButtonThumbnailFilePath = L"EngineContent/LevelEditor/AssetButtonBase.png";
+	// Uses same asset path as the assigned texture atlas for the asset
+	std::wstring AssetFilePath;
 	
 	float AssetButtonThumbnailTextureAtlasHeight = 90;
 	float AssetButtonThumbnailTextureAtlasOffsetMultiplierY = 1;

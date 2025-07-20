@@ -243,10 +243,10 @@ public:
 	// The asset parameter struct contains variables in this order:
 	// ID2D1Bitmap* TextureAtlas
 	// SVector TextureAtlasWidthHeight
-	// SVector TextureAtlasOffsetMultiplierWidthHeight
+	// int TextureAtlasOffsetMultiplierHeight
 	// int RenderLayer
 	// bool CreateDefaultAssetCollision
-	// const wchar_t* EditorAssetButtonThumbnailFilePath
+	// const wchar_t* AssetFilePath
 	// float EditorAssetButtonThumbnailTextureAtlasHeight
 	// float EditorAssetButtonThumbnailTextureAtlasOffsetMultiplierY
 	std::map<int, SAssetParameters> StoredGameObjectIDs;
@@ -539,7 +539,7 @@ public:
 		SetupBitmapComponent(&StoredGameObjects.back()->GameObjectBitmap, 
 			Iterator->second.TextureAtlas, 
 			Iterator->second.TextureAtlasWidthHeight, 
-			Iterator->second.TextureAtlasOffsetMultiplierWidthHeight, false);
+			Iterator->second.TextureAtlasOffsetMultiplierHeight, false);
 		StoredGameObjects.back()->GameObjectDimensions.X = Iterator->second.TextureAtlasWidthHeight.X;
 		StoredGameObjects.back()->GameObjectDimensions.Y = Iterator->second.TextureAtlasWidthHeight.Y;
 		StoredGameObjects.back()->GameObjectBitmap.BitmapParams.RenderLayer = Iterator->second.RenderLayer;

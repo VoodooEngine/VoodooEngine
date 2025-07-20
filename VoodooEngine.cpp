@@ -300,7 +300,7 @@ Button* CreateButton(
 	{
 		SetupBitmapComponent(
 			&ButtonToCreate->ButtonBitmap, ButtonToCreate->ButtonBitmap.Bitmap,
-			{ 90, TextureAtlasHeight }, { 1, TextureAtlasOffsetYMultiplier }, false);
+			{ 90, TextureAtlasHeight }, TextureAtlasOffsetYMultiplier, false);
 	}
 	else
 	{
@@ -697,9 +697,9 @@ void StoreTextureAtlasesFromFile(VoodooEngine* Engine)
 			TextureAtlasID = std::stoi(HorizontalLineNum[0]);
 
 			// Assign asset path
-			std::wstring WideString = std::wstring(
+			std::wstring WideStringAssetPath = std::wstring(
 				HorizontalLineNum[1].begin(), HorizontalLineNum[1].end());
-			const wchar_t* AssetPath = WideString.c_str();
+			const wchar_t* AssetPath = WideStringAssetPath.c_str();
 
 			// Assign texture atlas
 			BitmapComponent TextureAtlas;
@@ -708,13 +708,11 @@ void StoreTextureAtlasesFromFile(VoodooEngine* Engine)
 			SetupBitmapComponent(&TextureAtlas, TextureAtlas.Bitmap);
 
 			// Store texture atlas
-			Engine->StoredAssetTextureAtlases[TextureAtlasID] = { TextureAtlas, WideString };
+			Engine->StoredAssetTextureAtlases[TextureAtlasID] = { TextureAtlas, AssetPath, WideStringAssetPath };
 		}
 	}
 
 	File.close();
- 
-	return;
 }
 
 void StoreGameObjectIDsFromFile(VoodooEngine* Engine)
@@ -755,17 +753,18 @@ void StoreGameObjectIDsFromFile(VoodooEngine* Engine)
 			// Store game object ID
 			Engine->StoredGameObjectIDs[GameObjectID] =
 				{ Iterator->second.TextureAtlas.Bitmap,
-				std::stof(HorizontalLineNum[2]),std::stof(HorizontalLineNum[3]),
-				1,std::stof(HorizontalLineNum[4]),
-				std::stoi(HorizontalLineNum[5]),CreateCollision,
-				Iterator->second.TextureAtlasPath.c_str(),std::stof(HorizontalLineNum[7]),
+				std::stof(HorizontalLineNum[2]),
+				std::stof(HorizontalLineNum[3]),
+				std::stoi(HorizontalLineNum[4]),
+				std::stoi(HorizontalLineNum[5]),
+				CreateCollision,
+				Iterator->second.TextureAtlasPathString,
+				std::stof(HorizontalLineNum[7]),
 				std::stof(HorizontalLineNum[8]) };
 		}
 	}
 
 	File.close();
-
-	return;
 }
 
 void ActivateLevel(
@@ -893,13 +892,18 @@ void StorePlayerStartGameObjects(VoodooEngine* Engine)
 
 	// Reserve "0-3" for player start game object ID's
 	int PlayerStartID = 0;
-	float PlayerStartIconOffsetY = 1;
+	int PlayerStartIconOffsetY = 1;
 	for (int i = 0; i < 4; ++i)
 	{
 		Engine->StoredGameObjectIDs[PlayerStartID] = 
 		{ TextureAtlas.Bitmap,
-		{ 64, 64 }, { 1, PlayerStartIconOffsetY }, RENDERLAYER_MAXNUM, false,
-		AssetPath.AssetPathPlayerStartBitmap, 64, PlayerStartIconOffsetY };
+		{ 64, 64 }, 
+		PlayerStartIconOffsetY, 
+		RENDERLAYER_MAXNUM, 
+		false,
+		AssetPath.AssetPathPlayerStartBitmap, 
+		64, 
+		(float)PlayerStartIconOffsetY };
 		PlayerStartIconOffsetY++;
 		PlayerStartID++;
 	}
@@ -967,14 +971,6 @@ void InitEngine(VoodooEngine* Engine, SRenderLayerNames RenderLayerNames)
 	QueryPerformanceCounter(&Engine->StartTicks);
 
 	Engine->EngineRunning = true;
-
-	// Create level editor if in editor mode 
-	// (no need to store the pointer, 
-	// since it will be kept in memory throughout the lifetime of the application)
-	if (Engine->EditorMode)
-	{
-		VoodooLevelEditor::LevelEditor = new VoodooLevelEditor(Engine);
-	}
 }
 
 void RunEngine(VoodooEngine* Engine)
@@ -1152,8 +1148,7 @@ SVector AddMovementInput(VoodooEngine* Engine, Character* CharacterToAddMovement
 				// Cache the collision location of the collided object,
 				// this will be used later to determine the "snap" location of the character
 				CharacterToAddMovement->MoveComp.GroundHitCollisionLocation =
-					Engine->StoredCollisionComponents[i]->ComponentLocation.Y -
-					Engine->StoredCollisionComponents[i]->CollisionRect.Y;
+					Engine->StoredCollisionComponents[i]->ComponentLocation.Y;
 			}
 		}
 	}
@@ -1206,9 +1201,11 @@ SVector AddMovementInput(VoodooEngine* Engine, Character* CharacterToAddMovement
 
 	// Set character bitmap and asset collision location the same as the new location
 	CharacterToAddMovement->Location.X = NewLocation.X;
-	CharacterToAddMovement->GameObjectBitmap.ComponentLocation.X = NewLocation.X;
 	CharacterToAddMovement->Location.Y = NewLocation.Y;
+	CharacterToAddMovement->GameObjectBitmap.ComponentLocation.X = NewLocation.X;
 	CharacterToAddMovement->GameObjectBitmap.ComponentLocation.Y = NewLocation.Y;
+	CharacterToAddMovement->GameObjectFlippedBitmap.ComponentLocation.X = NewLocation.X;
+	CharacterToAddMovement->GameObjectFlippedBitmap.ComponentLocation.Y = NewLocation.Y;
 	CharacterToAddMovement->DefaultGameObjectCollision.ComponentLocation.X = NewLocation.X;
 	CharacterToAddMovement->DefaultGameObjectCollision.ComponentLocation.Y = NewLocation.Y;
 
