@@ -27,7 +27,7 @@ extern "C" VOODOOENGINE_API ID2D1Bitmap* SetupBitmap(
 
 extern "C" VOODOOENGINE_API void SetupBitmapComponent(
 	BitmapComponent* BitmapComponentToSetup,
-	ID2D1Bitmap* TextureAtlas,
+	ID2D1Bitmap* TextureAtlasBitmap,
 	SVector TextureAtlasWidthHeight = {},
 	int TextureAtlasOffsetMultiplierHeight = 1,
 	bool UseEntireTextureAtlasAsBitmapSource = true);

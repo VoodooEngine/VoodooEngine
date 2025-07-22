@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DEngineCollisionTags.h"
+#include "DLevelEditorInfo.h"
 #include "DDefaultRenderLayers.h"
 #include "VoodooEngine.h"
 

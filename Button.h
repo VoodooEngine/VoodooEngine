@@ -4,7 +4,7 @@
 #include "CollisionComponent.h"
 #include "BitmapComponent.h"
 #include "SVector.h"
-#include "Asset.h"
+#include "SAsset.h"
 #include <string> 
 
 class VoodooEngine;

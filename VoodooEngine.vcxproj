@@ -144,13 +144,13 @@
   <ItemGroup>
     <ClInclude Include="AIComponent.h" />
     <ClInclude Include="Animation.h" />
-    <ClInclude Include="Asset.h" />
+    <ClInclude Include="SAsset.h" />
     <ClInclude Include="BitmapComponent.h" />
     <ClInclude Include="Button.h" />
     <ClInclude Include="Character.h" />
     <ClInclude Include="CollisionComponent.h" />
     <ClInclude Include="DDefaultRenderLayers.h" />
-    <ClInclude Include="DEngineCollisionTags.h" />
+    <ClInclude Include="DLevelEditorInfo.h" />
     <ClInclude Include="GameObject.h" />
     <ClInclude Include="Gizmo.h" />
     <ClInclude Include="Interface.h" />

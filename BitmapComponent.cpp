@@ -1,30 +1,29 @@
 #include "BitmapComponent.h"
 #include <wincodec.h>
 
-HRESULT SetupWicConverter(
+// Create a converter from WIC bitmap to Direct2D bitmap,
+// will determine here if bitmap should be flipped or not
+IWICFormatConverter* SetupWicConverter(
+	IWICFormatConverter* WicConverter,
 	IWICImagingFactory* WicFactory, 
-	IWICBitmapFrameDecode* DecoderFrame, 
-	IWICFormatConverter* WicConverter, 
+	IWICBitmapFrameDecode* DecoderFrame,
 	bool FlipBitmap)
 {
-	HRESULT Result;
+	WicFactory->CreateFormatConverter(&WicConverter);
 	IWICBitmapSource* Source = nullptr;
-
 	if (!FlipBitmap)
 	{
 		Source = DecoderFrame;
 	}
-
 	IWICBitmapFlipRotator* ImageFlip = nullptr;
 	if (FlipBitmap)
 	{
-		Result = WicFactory->CreateBitmapFlipRotator(&ImageFlip);
-		Result = ImageFlip->Initialize(DecoderFrame, WICBitmapTransformFlipHorizontal);
-
+		WicFactory->CreateBitmapFlipRotator(&ImageFlip);
+		ImageFlip->Initialize(DecoderFrame, WICBitmapTransformFlipHorizontal);
 		Source = ImageFlip;
 	}
 
-	Result = WicConverter->Initialize(
+	WicConverter->Initialize(
 		Source,
 		GUID_WICPixelFormat32bppPBGRA,
 		WICBitmapDitherTypeNone,
@@ -37,10 +36,11 @@ HRESULT SetupWicConverter(
 		ImageFlip->Release();
 	}
 
-	return Result;
+	return WicConverter;
 }
 
-ID2D1Bitmap* SetupBitmap(ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer, bool FlipBitmap)
+ID2D1Bitmap* SetupBitmap(
+	ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID2D1HwndRenderTarget* Renderer, bool FlipBitmap)
 {
 	// If bitmap is already created, 
 	// then release previous bitmap to avoid memory leak before making it nullptr
@@ -78,15 +78,12 @@ ID2D1Bitmap* SetupBitmap(ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID
 	// Create decoder frame
 	IWICBitmapFrameDecode* DecoderFrame = nullptr;
 	Result = Decoder->GetFrame(0, &DecoderFrame);
-
-	// Create a converter from WIC bitmap to Direct2D bitmap
+ 
 	IWICFormatConverter* WicConverter = nullptr;
-	Result = WicFactory->CreateFormatConverter(&WicConverter);
+	WicConverter = SetupWicConverter(WicConverter, WicFactory, DecoderFrame, FlipBitmap);
 
-	Result = SetupWicConverter(WicFactory, DecoderFrame, WicConverter, FlipBitmap);
-
-	Renderer->CreateBitmapFromWicBitmap(
-		WicConverter, nullptr, &BitmapToSetup);
+	// The final bitmap will be returned
+	Renderer->CreateBitmapFromWicBitmap(WicConverter, nullptr, &BitmapToSetup);
 
 	if (WicFactory)
 	{
@@ -110,21 +107,21 @@ ID2D1Bitmap* SetupBitmap(ID2D1Bitmap* BitmapToSetup, const wchar_t* FileName, ID
 
 void SetupBitmapComponent(
 	BitmapComponent* BitmapComponentToSetup,
-	ID2D1Bitmap* TextureAtlas,
+	ID2D1Bitmap* TextureAtlasBitmap,
 	SVector TextureAtlasWidthHeight,
 	int TextureAtlasOffsetMultiplierHeight,
 	bool UseEntireTextureAtlasAsBitmapSource)
 {
-	BitmapComponentToSetup->Bitmap = TextureAtlas;
+	BitmapComponentToSetup->Bitmap = TextureAtlasBitmap;
 
 	if (UseEntireTextureAtlasAsBitmapSource)
 	{
 		// Set the bitmap source the same size as the entire texture altas
 		// (this is used for when there is a single texture instead of multiple "slots" in the texture atlas)
 		BitmapComponentToSetup->BitmapParams.BitmapSource.X =
-			TextureAtlas->GetSize().width;
+			TextureAtlasBitmap->GetSize().width;
 		BitmapComponentToSetup->BitmapParams.BitmapSource.Y =
-			TextureAtlas->GetSize().height;
+			TextureAtlasBitmap->GetSize().height;
 
 		// Since computer graphics start from left to right
 		// "BitmapOffsetLeft" is not set since default is at "0"

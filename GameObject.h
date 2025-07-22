@@ -30,7 +30,7 @@ public:
 	virtual void OnGameObjectDeleted(){};
 
 	// Enable/disable bitmap rendering/default object collision
-	virtual void UpdateGameObjectState(bool Enable = false)
+	virtual void SetGameObjectState(bool Enable = false)
 	{
 		if (Enable)
 		{

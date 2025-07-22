@@ -447,6 +447,9 @@ void SetButtonState(
 		return;
 	}
 
+	// Reset overlap
+	ButtonToUpdate->ButtonCollider.IsOverlapped = false;
+
 	switch (NewButtonState)
 	{
 	case Default:
@@ -752,7 +755,7 @@ void StoreGameObjectIDsFromFile(VoodooEngine* Engine)
 
 			// Store game object ID
 			Engine->StoredGameObjectIDs[GameObjectID] =
-				{ Iterator->second.TextureAtlas.Bitmap,
+				{ Iterator->second.TextureAtlasComponent.Bitmap,
 				std::stof(HorizontalLineNum[2]),
 				std::stof(HorizontalLineNum[3]),
 				std::stoi(HorizontalLineNum[4]),
@@ -790,7 +793,7 @@ void ActivateLevel(
 			continue;
 		}
 
-		Engine->StoredGameObjects[i]->UpdateGameObjectState(false);
+		Engine->StoredGameObjects[i]->SetGameObjectState(false);
 
 		// If in debug mode stop rendering the debug asset collision rect
 		if (Engine->DebugMode)
@@ -809,7 +812,7 @@ void ActivateLevel(
 	// Now only enable and show game objects in current active level
 	for (int i = 0; i < Level.size(); ++i)
 	{
-		Level[i]->UpdateGameObjectState(true);
+		Level[i]->SetGameObjectState(true);
 
 		// If in debug mode, render asset collision that is part of the current active level
 		if (Engine->DebugMode)
@@ -820,22 +823,22 @@ void ActivateLevel(
 		if (Level[i]->GameObjectID == PlayerStartLeftID)
 		{
 			Engine->PlayerStartObjectLeft = Level[i];
-			Engine->PlayerStartObjectLeft->UpdateGameObjectState(false);
+			Engine->PlayerStartObjectLeft->SetGameObjectState(false);
 		}
 		if (Level[i]->GameObjectID == PlayerStartRightID)
 		{
 			Engine->PlayerStartObjectRight = Level[i];
-			Engine->PlayerStartObjectRight->UpdateGameObjectState(false);
+			Engine->PlayerStartObjectRight->SetGameObjectState(false);
 		}
 		if (Level[i]->GameObjectID == PlayerStartUpID)
 		{
 			Engine->PlayerStartObjectUp = Level[i];
-			Engine->PlayerStartObjectUp->UpdateGameObjectState(false);
+			Engine->PlayerStartObjectUp->SetGameObjectState(false);
 		}
 		if (Level[i]->GameObjectID == PlayerStartDownID)
 		{
 			Engine->PlayerStartObjectDown = Level[i];
-			Engine->PlayerStartObjectDown->UpdateGameObjectState(false);
+			Engine->PlayerStartObjectDown->SetGameObjectState(false);
 		}
 	}
 
@@ -986,6 +989,43 @@ void RunEngine(VoodooEngine* Engine)
 	Engine->Renderer->Clear(Engine->ClearScreenColor);
 	Render(Engine);
 	Engine->Renderer->EndDraw();
+}
+
+void OpenLevelFile(VoodooEngine* Engine)
+{
+	// Common dialog box structure
+	OPENFILENAME OFN;
+	// Buffer for file name
+	wchar_t FileNameBuffer[260];
+
+	// Initialize OPENFILENAME
+	ZeroMemory(&OFN, sizeof(OFN));
+	OFN.lStructSize = sizeof(OFN);
+	OFN.hwndOwner = Engine->Window.HWind;
+	OFN.lpstrFile = FileNameBuffer;
+
+	// Set lpstrFile[0] to '\0', 
+	// so that GetOpenFileName does not use the contents of FileNameBuffer to initialize itself
+	OFN.lpstrFile[0] = '\0';
+
+	OFN.nMaxFile = sizeof(FileNameBuffer);
+	OFN.lpstrFilter = L"Lev File\0*.LEV\0";
+	OFN.nFilterIndex = 1;
+	OFN.lpstrFileTitle = NULL;
+	OFN.nMaxFileTitle = 0;
+	OFN.lpstrInitialDir = NULL;
+	OFN.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	// Display the Open dialog box if valid
+	if (GetOpenFileName(&OFN) == TRUE)
+	{
+		// Called once the "open" button has been clicked
+		// NOTE: Pass empty vector since it is only used for caching gameobjects from level file
+		// In this case we don't want to cache any game objects, just load the level for level editing
+		std::vector<GameObject*> EmptyVector;
+		Engine->LoadGameObjectsFromFile(Engine, OFN.lpstrFile, EmptyVector);
+		Engine->OpenedLevelFileString = OFN.lpstrFile;
+	}
 }
 
 void SetGameObjectLocation(GameObject* GameObjectToSet, SVector NewLocation)

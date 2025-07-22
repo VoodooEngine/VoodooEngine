@@ -6,7 +6,7 @@
 // Contains information about the texture atlas and its file path
 struct SAssetTextureAtlas
 {
-	BitmapComponent TextureAtlas;
+	BitmapComponent TextureAtlasComponent;
 	const wchar_t* TextureAtlasPath;
 	std::wstring TextureAtlasPathString;
 };
@@ -14,7 +14,7 @@ struct SAssetTextureAtlas
 // Contains all the information for game assets
 struct SAssetParameters
 {
-	ID2D1Bitmap* TextureAtlas = nullptr;
+	ID2D1Bitmap* TextureAtlasBitmap = nullptr;
 	SVector TextureAtlasWidthHeight = { 0, 0 };
 	int TextureAtlasOffsetMultiplierHeight = 1;
 	int RenderLayer = 0;

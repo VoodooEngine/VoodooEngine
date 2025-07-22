@@ -18,6 +18,7 @@ public:
 	BitmapComponent GameObjectFlippedBitmap;
 	MovementComponent MoveComp;
 
+	/*
 	void CreateFlippedBitmap()
 	{
 		auto Iterator = VoodooEngine::Engine->StoredGameObjectIDs.find(GameObjectID);
@@ -33,12 +34,14 @@ public:
 		GameObjectFlippedBitmap.BitmapParams.BitmapSetToNotRender = true;
 		VoodooEngine::Engine->StoredBitmapComponents.push_back(&GameObjectFlippedBitmap);
 	}
+	*/
 
 	void OnGameObjectCreated(SVector SpawnLocation)
 	{
-		CreateFlippedBitmap();
+		//CreateFlippedBitmap();
 		VoodooEngine::Engine->StoredUpdateComponents.push_back(this);
 	}
+
 	void OnGameObjectDeleted()
 	{
 		VoodooEngine::Engine->RemoveComponent(
@@ -47,7 +50,32 @@ public:
 		if (GameObjectFlippedBitmap.Bitmap)
 		{
 			VoodooEngine::Engine->RemoveComponent(
-				(BitmapComponent*)&GameObjectFlippedBitmap, &VoodooEngine::Engine->StoredBitmapComponents);
+				&GameObjectFlippedBitmap, &VoodooEngine::Engine->StoredBitmapComponents);
+		}
+		else
+		{
+			ScreenPrint(VoodooEngine::Engine, "flipped_bitmap_not_valid_character_class");
+		}
+
+		GameObjectFlippedBitmap.Bitmap = nullptr;
+
+		ScreenPrint(VoodooEngine::Engine, "deleted_character");
+	}
+
+	/*
+	void SetGameObjectState(bool Enable)
+	{
+		//GameObject::SetGameObjectState(Enable);
+
+		//ScreenPrint(VoodooEngine::Engine, "called_character_virtual_setgameobjectstate");
+
+		if (Enable)
+		{
+			//GameObjectFlippedBitmap.BitmapParams.BitmapSetToNotRender = false;
+		}
+		else if (!Enable)
+		{
+			//GameObjectFlippedBitmap.BitmapParams.BitmapSetToNotRender = true;
 		}
 	}
 
@@ -68,6 +96,7 @@ public:
 
 	void Update(float DeltaTime)
 	{
-		FlipBitmapBasedOnMovement();
+		//FlipBitmapBasedOnMovement();
 	}
+	*/
 };
